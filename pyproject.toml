@@ -1,7 +1,7 @@
 [project]
 name = "team-knowledge-assistant"
 version = "0.1.0"
-description = "Add your description here"
+description = "This is a small SaaS where a team connects its docs (PDFs, Repos docs, Markdown) and asks questions; answers cite their resources and say 'not found' rather than guess."
 readme = "README.md"
 authors = [
     { name = "amir-gorgy", email = "amir.gorgy.98@gmail.com" }
@@ -9,13 +9,14 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.162.2",
+    "httpx2>=2.16.0",
     "psycopg[binary]>=3.3.8",
     "pydantic-settings>=2.16.2",
     "uvicorn[standard]>=0.54.0",
 ]
 
-[project.scripts]
-team-knowledge-assistant = "team_knowledge_assistant:main"
+# [project.scripts]
+# team-knowledge-assistant = "team_knowledge_assistant:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
