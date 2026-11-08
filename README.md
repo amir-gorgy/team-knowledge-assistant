@@ -1,0 +1,1 @@
+This is a small SaaS where a team connects its docs (PDFs, Repos docs, Markdown) and asks questions; answers cite their resources and say "not found" rather than guess.
