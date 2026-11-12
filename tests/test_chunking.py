@@ -85,7 +85,8 @@ def test_clean_heading(raw, expected):
 def test_large_section_is_split_without_losing_text():
     paragraphs = [f"Paragraph {i} " + "word " * 15 for i in range(10)]
     text = "# Big\n\n" + "\n\n".join(paragraphs)
-    chunker = MarkdownChunker(max_chars=200)
+    # No overlap, so the pieces joined together must equal the original exactly.
+    chunker = MarkdownChunker(max_chars=200, overlap=0)
 
     chunks = chunker.chunk(text, "doc.md")
 
@@ -108,6 +109,58 @@ def test_code_block_with_blank_lines_stays_whole():
 
 
 def test_over_long_line_is_cut():
-    chunks = MarkdownChunker(max_chars=50).chunk("# H\n" + "a" * 130, "doc.md")
+    chunks = MarkdownChunker(max_chars=50, overlap=0).chunk("# H\n" + "a" * 130, "doc.md")
     assert all(len(c.text) <= 50 for c in chunks)
     assert squash("".join(c.text for c in chunks)) == squash("# H" + "a" * 130)
+
+
+def test_oversized_code_block_is_kept_whole():
+    code = "```python\n" + "\n".join(f"value_{i} = {i}" for i in range(30)) + "\n```"
+    text = "# A\n\nSome intro text.\n\n" + code
+    chunks = MarkdownChunker(max_chars=100).chunk(text, "doc.md")
+    # The code block is far over 100 chars, but appears whole in exactly one chunk.
+    assert sum(code in c.text for c in chunks) == 1
+
+
+# --- overlap ---
+
+
+def sentences_text(n):
+    return " ".join(f"Sentence number {i} is here." for i in range(n))
+
+
+def test_each_piece_starts_with_the_end_of_the_previous_one():
+    text = "# Big\n\n" + "\n\n".join(sentences_text(6) for _ in range(6))
+    chunker = MarkdownChunker(max_chars=400, overlap=0.1)  # overlap up to 40 chars
+
+    chunks = chunker.chunk(text, "doc.md")
+
+    assert len(chunks) > 1
+    for previous, current in zip(chunks, chunks[1:]):
+        repeated = current.text.split("\n\n")[0]
+        assert previous.text.endswith(repeated)
+        assert 0 < len(repeated) <= 40
+        assert len(current.text) <= 400
+
+
+def test_overlap_uses_whole_sentences():
+    text = "# Big\n\n" + "\n\n".join(sentences_text(6) for _ in range(6))
+    chunks = MarkdownChunker(max_chars=400, overlap=0.1).chunk(text, "doc.md")
+    for chunk in chunks[1:]:
+        assert chunk.text.startswith("Sentence number")
+
+
+def test_overlap_never_repeats_code():
+    code = "```python\nx = 1\ny = 2\n```"
+    text = "# A\n\n" + "\n\n".join([sentences_text(4), code] * 6)
+    chunks = MarkdownChunker(max_chars=200, overlap=0.2).chunk(text, "doc.md")
+    for chunk in chunks:
+        fences = sum(line.startswith("```") for line in chunk.text.splitlines())
+        assert fences % 2 == 0  # no chunk holds half a code block
+    assert squash("".join(c.text for c in chunks)).count(squash(code)) == 6
+
+
+def test_zero_overlap_repeats_nothing():
+    text = "# Big\n\n" + "\n\n".join(sentences_text(6) for _ in range(6))
+    chunks = MarkdownChunker(max_chars=400, overlap=0).chunk(text, "doc.md")
+    assert squash("".join(c.text for c in chunks)) == squash(text)

@@ -4,7 +4,8 @@ Chunking happens in two passes:
   1. split_by_headings: one chunk per section (a heading plus the text under it),
      skipping sections that have no text of their own.
   2. split_large: sections longer than max_chars are cut at paragraph breaks,
-     and every piece keeps the section's heading_path.
+     and every piece keeps the section's heading_path. Consecutive pieces overlap
+     by about 10%, and code blocks are never split.
 
 Use MarkdownChunker.chunk() to run both.
 """
@@ -21,6 +22,10 @@ HEADINGS_PATTERN = re.compile(r"^(#{1,6})\s+(.*)")
 LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]*\)")  # [text](url) -> keeps "text" as group 1
 HTML_TAG_PATTERN = re.compile(r"<[^>]+>")  # e.g. <u>, </u>, <mark>
 CLOSING_HASHES_PATTERN = re.compile(r"\s+#+\s*$")  # optional closing hashes: "## Title ##"
+
+# Where one sentence ends and the next begins: whitespace after '.', '!' or '?'.
+# Used to build the overlap from whole sentences.
+SENTENCE_BREAK_PATTERN = re.compile(r"(?<=[.!?])\s+")
 
 
 @dataclass
@@ -61,17 +66,33 @@ def is_fence(line: str) -> bool:
     return line.startswith("```")
 
 
+def contains_code(block: str) -> bool:
+    """True if the block has a ``` fence line anywhere in it."""
+    return any(is_fence(line) for line in block.splitlines())
+
+
 class MarkdownChunker:
-    def __init__(self, max_chars: int = 1500, skip_preamble: bool = False):
+    def __init__(
+        self,
+        max_chars: int = 2500,
+        overlap: float = 0.1,
+        skip_preamble: bool = False,
+    ):
         """
         Args:
             max_chars: Longest chunk to produce. Longer sections are split by split_large().
+                The one exception is a single code block longer than this: it is kept
+                whole, because half a function is a poor search result.
+            overlap: Fraction of max_chars that the start of each piece repeats from
+                the end of the previous piece (0.1 = 10%, 0 = no overlap). Only used
+                when a section is split; whole sentences are repeated where possible.
             skip_preamble: Drop the text before the first heading. Turn this on for
                 documents converted from web pages, where that text is the site's
                 navigation (e.g. "FastAPI Learn Deployment") rather than content.
                 Leave it off for normal Markdown, where it can be a real introduction.
         """
         self.max_chars = max_chars
+        self.overlap_chars = int(max_chars * overlap)
         self.skip_preamble = skip_preamble
 
     def chunk(self, text: str, source: str) -> list[Chunk]:
@@ -142,31 +163,80 @@ class MarkdownChunker:
         """Split a chunk longer than max_chars into pieces at paragraph breaks.
 
         Paragraphs (and whole code blocks) are packed into a piece until the next
-        one would push it over max_chars, then a new piece starts. Every piece
-        keeps the original source and heading_path, so it can still be cited.
+        one would push it over max_chars, then a new piece starts. Each new piece
+        begins with the last sentences of the previous one (the overlap), so text
+        near a cut still appears with its context in at least one piece. Every
+        piece keeps the original source and heading_path, so it can still be cited.
         """
         if len(chunk.text) <= self.max_chars:
             return [chunk]
 
-        pieces = []
-        current = ""  # the piece being filled
+        def joined_length(blocks: list[str]) -> int:
+            # Length of the blocks once joined with blank lines ("\n\n").
+            return len("\n\n".join(blocks))
+
+        pieces = []  # finished pieces, each a list of blocks
+        current = []  # blocks of the piece being filled
         for block in self._blocks(chunk.text):
-            # A single block can itself be too long (usually a big code example).
-            for part in self._split_by_lines(block):
-                # +2 for the blank line ("\n\n") that joins two blocks.
-                if current and len(current) + 2 + len(part) > self.max_chars:
+            if contains_code(block):
+                # Never cut code: an oversized code block becomes one piece of its own,
+                # longer than max_chars.
+                parts = [block]
+            else:
+                # Plain text with no blank lines to split at is cut at line breaks.
+                parts = self._split_by_lines(block)
+
+            for part in parts:
+                if current and joined_length(current + [part]) > self.max_chars:
                     pieces.append(current)
-                    current = part
-                else:
-                    current = f"{current}\n\n{part}" if current else part
+                    # Start the next piece with the end of the one just finished,
+                    # unless that would push the new piece over the limit.
+                    tail = self._overlap_tail(current[-1])
+                    fits = tail and joined_length([tail, part]) <= self.max_chars
+                    current = [tail] if fits else []
+                current.append(part)
         if current:
             pieces.append(current)
 
         # list(...) gives each piece its own copy of the heading path.
         return [
-            Chunk(text=piece, source=chunk.source, heading_path=list(chunk.heading_path))
+            Chunk(
+                text="\n\n".join(piece),
+                source=chunk.source,
+                heading_path=list(chunk.heading_path),
+            )
             for piece in pieces
         ]
+
+    def _overlap_tail(self, block: str) -> str:
+        """The end of a block to repeat at the start of the next piece.
+
+        Takes as many whole sentences from the end of the block as fit in
+        overlap_chars. If even the last sentence is too long, takes the last
+        overlap_chars characters, starting at a word boundary. Code is never
+        repeated, so a piece never starts in the middle of a code block.
+        """
+        if self.overlap_chars <= 0 or contains_code(block):
+            return ""
+
+        # Positions where a sentence starts: the beginning of the block, plus right
+        # after every sentence break. Walk them from the end, keeping the earliest
+        # start whose tail still fits. Slicing (rather than re-joining sentences)
+        # keeps the tail an exact copy of the block's ending.
+        sentence_starts = [0] + [m.end() for m in SENTENCE_BREAK_PATTERN.finditer(block)]
+        tail = ""
+        for start in reversed(sentence_starts):
+            if len(block) - start > self.overlap_chars:
+                break
+            tail = block[start:]
+        if tail:
+            return tail
+
+        # No whole sentence fits: take the last characters, dropping the first
+        # (probably cut-off) word. Text with no spaces at all gets no overlap.
+        end = block[-self.overlap_chars :]
+        _, space, rest = end.partition(" ")
+        return rest.strip() if space else ""
 
     def _blocks(self, text: str) -> list[str]:
         """Split text into paragraphs at blank lines, keeping each code block in one piece.
@@ -191,10 +261,10 @@ class MarkdownChunker:
         return blocks
 
     def _split_by_lines(self, block: str) -> list[str]:
-        """Split one block longer than max_chars at line breaks.
+        """Split one text block longer than max_chars at line breaks.
 
-        This is the fallback for blocks with no blank lines to split at, such as long
-        code examples. Pieces of a split code block lose their ``` fence on one side.
+        This is the fallback for text with no blank lines to split at. It is never
+        used for code: split_large keeps code blocks whole.
         A single line longer than max_chars is cut at max_chars characters.
         """
         if len(block) <= self.max_chars:
