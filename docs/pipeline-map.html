@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Knowledge Assistant Pipeline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one reading column; an overview diagram, then the two pipelines as numbered stage lists, each stage with real data from this repo. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --sunk: #eef0f4;
+  --fg: #1a1f29;
+  --muted: #5a6373;
+  --line: #d8dce4;
+  --ingest: #2a62a8;
+  --ingest-soft: #e4edf8;
+  --query: #a55409;
+  --query-soft: #f8ecdf;
+  --copilot: #6d3fd1;
+  --copilot-soft: #eee7fb;
+  --good: #1d7a4b;
+  --bad: #b3261e;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1217; --surface: #171b22; --sunk: #1d222b; --fg: #e5e8ee; --muted: #9aa3b2; --line: #2b313c;
+    --ingest: #74a9ea; --ingest-soft: #1a2738; --query: #f0a454; --query-soft: #2e2318;
+    --copilot: #b597f6; --copilot-soft: #251e38; --good: #52c58d; --bad: #f2776c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1217; --surface: #171b22; --sunk: #1d222b; --fg: #e5e8ee; --muted: #9aa3b2; --line: #2b313c;
+  --ingest: #74a9ea; --ingest-soft: #1a2738; --query: #f0a454; --query-soft: #2e2318;
+  --copilot: #b597f6; --copilot-soft: #251e38; --good: #52c58d; --bad: #f2776c;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+.wrap { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 48px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.25; margin: 0; }
+h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 600; }
+h3 { font-size: 16px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+code { background: var(--sunk); padding: 1px 5px; border-radius: 4px; }
+.lead { font-size: 17px; color: var(--muted); max-width: 64ch; }
+header { display: flex; flex-direction: column; gap: 12px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+section { display: flex; flex-direction: column; gap: 18px; }
+.sec-head { display: flex; flex-direction: column; gap: 6px; }
+.sec-head p { color: var(--muted); }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+.tag.ingest { background: var(--ingest-soft); color: var(--ingest); }
+.tag.query { background: var(--query-soft); color: var(--query); }
+.tag.copilot { background: var(--copilot-soft); color: var(--copilot); }
+
+/* overview diagram */
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.scroll { overflow-x: auto; }
+.figure svg { display: block; min-width: 680px; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; border: 2px solid; }
+.sw.ingest { border-color: var(--ingest); background: var(--ingest-soft); }
+.sw.query { border-color: var(--query); background: var(--query-soft); }
+.sw.shared { border-color: var(--muted); background: var(--sunk); }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+svg .box { stroke-width: 1.5; }
+svg .box.ingest { fill: var(--ingest-soft); stroke: var(--ingest); }
+svg .box.query { fill: var(--query-soft); stroke: var(--query); }
+svg .box.shared { fill: var(--sunk); stroke: var(--muted); }
+svg .t1 { fill: var(--fg); font: 600 14px var(--sans); }
+svg .t2 { fill: var(--muted); font: 400 11.5px var(--sans); }
+svg .t2m { fill: var(--muted); font: 400 11px var(--mono); }
+svg .ar { fill: none; stroke-width: 1.6; }
+svg .ar.ingest { stroke: var(--ingest); }
+svg .ar.query { stroke: var(--query); }
+svg .ar.shared { stroke: var(--muted); }
+svg .mk-ingest { fill: var(--ingest); }
+svg .mk-query { fill: var(--query); }
+svg .mk-shared { fill: var(--muted); }
+
+/* stages */
+ol.stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; counter-reset: st; }
+ol.stages > li { counter-increment: st; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 14px; }
+ol.stages > li::before { content: counter(st); grid-row: span 3; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 600 14px var(--mono); }
+.ingest-list > li::before { background: var(--ingest-soft); color: var(--ingest); }
+.query-list > li::before { background: var(--query-soft); color: var(--query); }
+.copilot-list > li::before { background: var(--copilot-soft); color: var(--copilot); }
+.st-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.where { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.st-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.st-body ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; max-width: 70ch; }
+.example { background: var(--sunk); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.example .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.example pre { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+tr.hl td { background: var(--ingest-soft); }
+.stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; display: flex; flex-direction: column; min-width: 92px; }
+.stat b { font: 600 17px var(--mono); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+
+/* distance chart */
+svg .axis { stroke: var(--line); stroke-width: 1; }
+svg .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 4; }
+svg .cut { stroke: var(--fg); stroke-width: 1.4; stroke-dasharray: 5 4; }
+svg .tick { fill: var(--muted); font: 400 11.5px var(--mono); }
+svg .rowlbl { fill: var(--fg); font: 500 12.5px var(--sans); }
+svg .rank { fill: var(--fg); font: 600 11px var(--mono); }
+svg .good { fill: var(--good); }
+svg .bad { fill: var(--bad); }
+svg .near { fill: var(--muted); }
+.chart svg { min-width: 620px; }
+
+/* gotchas + gaps */
+.callout { border: 1px solid var(--line); border-left: 4px solid var(--query); background: var(--surface); border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.callout pre { margin: 0; background: var(--sunk); border-radius: 6px; padding: 10px 12px; font-family: var(--mono); font-size: 13px; overflow-x: auto; }
+.callout ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.sev { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.sev.hi { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.sev.md { background: var(--query-soft); color: var(--query); }
+.sev.lo { background: var(--sunk); color: var(--muted); }
+footer { font-size: 13px; color: var(--muted); }
+@media (max-width: 560px) {
+  h1 { font-size: 26px; }
+  ol.stages > li { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  ol.stages > li::before { grid-row: auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">team-knowledge-assistant · as of 14 Nov 2026</div>
+  <h1>Knowledge Assistant Pipeline</h1>
+  <p class="lead">A Markdown file is split into chunks, each chunk becomes 768 numbers, and those go into one Postgres table. A question goes through the same model, and the chunks whose numbers are closest come back first. Everything below is what the code does today, using real data from your database.</p>
+</header>
+
+<section>
+  <div class="figure">
+    <div class="scroll">
+      <svg viewBox="0 0 920 320" role="img" aria-label="Overview: ingest row and query row share LM Studio and the Postgres chunks table">
+        <defs>
+          <marker id="ai" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-ingest" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="aq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-query" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-shared" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+        <!-- Row A: ingest -->
+        <rect class="box ingest" x="20" y="16" width="150" height="58" rx="8"/>
+        <text class="t1" x="95" y="40" text-anchor="middle">.md files</text>
+        <text class="t2" x="95" y="58" text-anchor="middle">a file or a folder</text>
+        <rect class="box ingest" x="200" y="16" width="150" height="58" rx="8"/>
+        <text class="t1" x="275" y="40" text-anchor="middle">Chunk</text>
+        <text class="t2" x="275" y="58" text-anchor="middle">by heading, ≤ 2,500 chars</text>
+        <rect class="box ingest" x="380" y="16" width="150" height="58" rx="8"/>
+        <text class="t1" x="455" y="40" text-anchor="middle">Embed</text>
+        <text class="t2m" x="455" y="58" text-anchor="middle">search_document: …</text>
+        <rect class="box ingest" x="560" y="16" width="150" height="58" rx="8"/>
+        <text class="t1" x="635" y="40" text-anchor="middle">Insert</text>
+        <text class="t2" x="635" y="58" text-anchor="middle">one row per chunk</text>
+        <rect class="box ingest" x="740" y="16" width="150" height="58" rx="8"/>
+        <text class="t1" x="815" y="40" text-anchor="middle">1,535 rows</text>
+        <text class="t2" x="815" y="58" text-anchor="middle">from 112 files</text>
+        <line class="ar ingest" x1="170" y1="45" x2="198" y2="45" marker-end="url(#ai)"/>
+        <line class="ar ingest" x1="350" y1="45" x2="378" y2="45" marker-end="url(#ai)"/>
+        <line class="ar ingest" x1="530" y1="45" x2="558" y2="45" marker-end="url(#ai)"/>
+        <line class="ar ingest" x1="710" y1="45" x2="738" y2="45" marker-end="url(#ai)"/>
+
+        <!-- Middle: shared services -->
+        <rect class="box shared" x="380" y="131" width="150" height="58" rx="8"/>
+        <text class="t1" x="455" y="155" text-anchor="middle">LM Studio</text>
+        <text class="t2" x="455" y="173" text-anchor="middle">nomic · 768 numbers</text>
+        <rect class="box shared" x="560" y="131" width="150" height="58" rx="8"/>
+        <text class="t1" x="635" y="155" text-anchor="middle">Postgres + pgvector</text>
+        <text class="t2" x="635" y="173" text-anchor="middle">table: chunks</text>
+        <line class="ar ingest" x1="455" y1="76" x2="455" y2="129" marker-start="url(#ai)" marker-end="url(#ai)"/>
+        <line class="ar ingest" x1="635" y1="76" x2="635" y2="129" marker-end="url(#ai)"/>
+        <line class="ar query" x1="455" y1="191" x2="455" y2="244" marker-start="url(#aq)" marker-end="url(#aq)"/>
+        <line class="ar query" x1="635" y1="191" x2="635" y2="244" marker-end="url(#aq)"/>
+
+        <!-- Row B: query -->
+        <rect class="box query" x="20" y="246" width="150" height="58" rx="8"/>
+        <text class="t1" x="95" y="270" text-anchor="middle">Question</text>
+        <text class="t2" x="95" y="288" text-anchor="middle">or a commit diff</text>
+        <rect class="box query" x="200" y="246" width="150" height="58" rx="8"/>
+        <text class="t1" x="275" y="270" text-anchor="middle">Build query</text>
+        <text class="t2" x="275" y="288" text-anchor="middle">a diff: one per file</text>
+        <rect class="box query" x="380" y="246" width="150" height="58" rx="8"/>
+        <text class="t1" x="455" y="270" text-anchor="middle">Embed</text>
+        <text class="t2m" x="455" y="288" text-anchor="middle">search_query: …</text>
+        <rect class="box query" x="560" y="246" width="150" height="58" rx="8"/>
+        <text class="t1" x="635" y="270" text-anchor="middle">Search</text>
+        <text class="t2m" x="635" y="288" text-anchor="middle">ORDER BY &lt;=&gt;</text>
+        <rect class="box query" x="740" y="246" width="150" height="58" rx="8"/>
+        <text class="t1" x="815" y="270" text-anchor="middle">Top-k hits</text>
+        <text class="t2" x="815" y="288" text-anchor="middle">lowest distance first</text>
+        <line class="ar query" x1="170" y1="275" x2="198" y2="275" marker-end="url(#aq)"/>
+        <line class="ar query" x1="350" y1="275" x2="378" y2="275" marker-end="url(#aq)"/>
+        <line class="ar query" x1="530" y1="275" x2="558" y2="275" marker-end="url(#aq)"/>
+        <line class="ar query" x1="710" y1="275" x2="738" y2="275" marker-end="url(#aq)"/>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="sw ingest"></i>Ingest: run once per set of docs (<code>scripts/ingest.py</code>)</span>
+      <span><i class="sw query"></i>Query: run on every question (<code>scripts/search.py</code>, MCP tools)</span>
+      <span><i class="sw shared"></i>Shared by both: same model, same table</span>
+    </div>
+  </div>
+  <p>Both rows have to use the same embedding model. Vectors from different models can't be compared, which is why each row also stores <code>embedding_model</code>.</p>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="tag ingest">Ingest</span>
+    <h2>What happens to a new .md file</h2>
+    <p>Worked example: <code>Query Parameters - FastAPI.md</code>, followed through every step.</p>
+  </div>
+  <ol class="stages ingest-list">
+    <li>
+      <div class="st-head"><h3>Find the files</h3><span class="where">scripts/ingest.py · main()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>The path you pass is either a single <code>.md</code> file or a folder.</li>
+          <li>For a folder it takes <code>*.md</code> at the top level only, sorted by name. Files in subfolders are <b>not</b> picked up.</li>
+          <li>Each file is read as UTF-8. The path, exactly as you typed it, becomes the chunk's <code>source</code>, which is used for citations.</li>
+        </ul>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Split by headings</h3><span class="where">Ingest/chunking.py · split_by_headings()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Every <code>#</code> to <code>######</code> heading starts a new section. The section is the heading line plus everything up to the next heading.</li>
+          <li>A running list of headings by level becomes the <code>heading_path</code>. For example, after <code>## Optional parameters</code> under <code># Query Parameters</code>, the path is <code>Query Parameters &gt; Optional parameters</code>. Links, HTML tags, <code>*</code> and backticks are stripped from the path.</li>
+          <li>A <code>#</code> line inside a <code>```</code> code block is a comment, so it doesn't count as a heading.</li>
+          <li>Sections with a heading but no text are dropped, but their heading still appears in the paths below them.</li>
+          <li>Text before the first heading becomes a chunk with an empty path (<code>skip_preamble</code> is off by default).</li>
+        </ul>
+        <div class="example">
+          <div class="lbl">Example: this file → 8 chunks</div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>heading_path</th><th style="text-align:right">chars</th></tr></thead>
+              <tbody>
+                <tr><td><i>(empty: text before the first heading)</i></td><td class="num">35</td></tr>
+                <tr><td>Query Parameters &gt; AI coding agents</td><td class="num">1,275</td></tr>
+                <tr><td>Query Parameters &gt; Defaults</td><td class="num">586</td></tr>
+                <tr class="hl"><td>Query Parameters &gt; Optional parameters</td><td class="num">599</td></tr>
+                <tr><td>Query Parameters &gt; Query parameter type conversion</td><td class="num">1,232</td></tr>
+                <tr><td>Query Parameters &gt; Multiple path and query parameters</td><td class="num">770</td></tr>
+                <tr><td>Query Parameters &gt; Required query parameters</td><td class="num">1,802</td></tr>
+                <tr><td>Query Parameters &gt; Required query parameters &gt; Tip</td><td class="num">170</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="font-size:13px;color:var(--muted)">The first two rows are leftovers from the website the docs were converted from (site navigation and an "AI coding agents" banner). They're stored and searched like real content.</p>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Split long sections</h3><span class="where">Ingest/chunking.py · split_large()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Sections of 2,500 characters or less (<code>max_chars</code>) are kept as they are.</li>
+          <li>Longer sections are cut into paragraphs at blank lines and packed into pieces of up to 2,500 characters. A code block is never cut, even if it's longer than that on its own.</li>
+          <li>Text with no blank lines is cut at line breaks instead, and a single line longer than 2,500 characters is cut into 2,500-character slices.</li>
+          <li><b>Overlap:</b> each new piece starts with the last whole sentences of the previous piece, up to 250 characters (10%). Code is never repeated.</li>
+          <li>Every piece keeps the section's <code>source</code> and <code>heading_path</code>, so it can still be cited.</li>
+        </ul>
+        <div class="example">
+          <div class="lbl">Result across all 112 sample files</div>
+          <div class="stats">
+            <div class="stat"><b>1,535</b><span>chunks</span></div>
+            <div class="stat"><b>583</b><span>median chars</span></div>
+            <div class="stat"><b>1,836</b><span>90th percentile</span></div>
+            <div class="stat"><b>2,497</b><span>longest</span></div>
+            <div class="stat"><b>250</b><span>under 200 chars</span></div>
+          </div>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Embed</h3><span class="where">Ingest/embedding.py · embed_documents()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Each chunk's text gets the prefix <code>search_document: </code>. The nomic model was trained with these prefixes, and retrieval gets worse without them.</li>
+          <li>Chunks are sent 32 at a time to <code>POST http://localhost:1234/v1/embeddings</code> (LM Studio). The URL, model and key come from <code>EMBEDDING_*</code> in <code>.env</code>.</li>
+          <li>Each chunk comes back as a list of 768 numbers. The code puts them back in input order and stops if any vector isn't 768 long.</li>
+        </ul>
+        <div class="example">
+          <div class="lbl">Example: "Optional parameters" (599 chars) →</div>
+          <pre>[0.0271, 0.0488, −0.1557, −0.0458, 0.0658, … 763 more]</pre>
+          <p style="font-size:13px;color:var(--muted)">No single number means anything by itself. What matters is the direction of the whole list, and chunks about similar things point in similar directions.</p>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Store</h3><span class="where">Ingest/store.py · insert_chunks() · db/init.sql</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Each chunk becomes one row in <code>chunks</code>: <code>id, source, heading_path, content, embedding_model, embedding vector(768), created_at</code>.</li>
+          <li>With <code>--reset</code>, the whole table is emptied first. Without it, new rows are added to what's already there, so running the same file twice stores it twice.</li>
+          <li>At the end the script prints the table's row count. It should match the chunk count.</li>
+        </ul>
+        <div class="example">
+          <div class="lbl">Example row</div>
+          <pre>id 1033 · source data/sample-docs-md/Query Parameters - FastAPI.md
+heading_path {Query Parameters, Optional parameters}
+content "## Optional parameters  The same way, you can declare optional query parameters…"
+embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0271, 0.0488, …]</pre>
+        </div>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="tag query">Query</span>
+    <h2>How a question finds chunks</h2>
+    <p>Used by <code>scripts/search.py</code> and the MCP tool <code>search_docs</code>.</p>
+  </div>
+  <ol class="stages query-list">
+    <li>
+      <div class="st-head"><h3>Embed the question</h3><span class="where">Ingest/embedding.py · embed_query()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>The same model embeds the question, but with the prefix <code>search_query: </code>. That prefix tells the model this is a question looking for documents.</li>
+        </ul>
+        <div class="example"><pre>"search_query: how do I declare an optional query parameter?"  →  768 numbers</pre></div>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Compare against every row</h3><span class="where">Ingest/store.py · search()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Postgres runs <code>embedding &lt;=&gt; query</code>, pgvector's <b>cosine distance</b>, for each row, then sorts by it and keeps the top <code>k</code>.</li>
+          <li>There's no vector index yet, so it checks all 1,535 rows every time. That makes the results exact, and at this size it takes milliseconds.</li>
+        </ul>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Return the hits</h3><span class="where">Hit(source, heading_path, content, distance)</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Each hit carries its file, heading path, full text and distance. The code doesn't drop any hit for being too far away. It always returns <code>k</code> results, even if none of them are relevant.</li>
+        </ul>
+      </div>
+    </li>
+  </ol>
+
+  <div class="figure chart">
+    <h3>Reading the score: lower is closer</h3>
+    <p style="color:var(--muted);font-size:14px">Cosine distance runs from 0 (same meaning) through 1 (unrelated) to 2 (opposite). These are the actual top 3 for two of today's test queries.</p>
+    <div class="scroll">
+      <svg viewBox="0 0 720 172" role="img" aria-label="Distances of the top 3 hits for two queries, with the 0.30 cut-off">
+        <line class="grid" x1="200" y1="50" x2="700" y2="50"/>
+        <line class="grid" x1="200" y1="105" x2="700" y2="105"/>
+        <line class="axis" x1="200" y1="138" x2="700" y2="138"/>
+        <line class="axis" x1="266.7" y1="138" x2="266.7" y2="143"/>
+        <line class="axis" x1="433.3" y1="138" x2="433.3" y2="143"/>
+        <line class="axis" x1="600" y1="138" x2="600" y2="143"/>
+        <text class="tick" x="266.7" y="158" text-anchor="middle">0.20</text>
+        <text class="tick" x="433.3" y="158" text-anchor="middle">0.25</text>
+        <text class="tick" x="600" y="158" text-anchor="middle">0.30</text>
+        <text class="tick" x="700" y="158" text-anchor="end">farther →</text>
+        <text class="tick" x="200" y="158" text-anchor="start">← closer</text>
+        <line class="cut" x1="600" y1="26" x2="600" y2="134"/>
+        <text class="tick" x="600" y="18" text-anchor="middle">0.30 cut-off (Copilot prompt)</text>
+        <text class="rowlbl" x="8" y="54">"optional query parameter?"</text>
+        <text class="rowlbl" x="8" y="109">"404 when item not found"</text>
+        <circle class="good" cx="293.3" cy="50" r="6"/>
+        <circle class="near" cx="466.7" cy="50" r="6"/>
+        <circle class="near" cx="486.7" cy="50" r="6"/>
+        <text class="rank" x="293.3" y="38" text-anchor="middle">#1</text>
+        <text class="rank" x="466.7" y="70" text-anchor="middle">#2</text>
+        <text class="rank" x="486.7" y="38" text-anchor="middle">#3</text>
+        <circle class="bad" cx="540" cy="105" r="6"/>
+        <circle class="good" cx="553.3" cy="105" r="6"/>
+        <circle class="good" cx="626.7" cy="105" r="6"/>
+        <text class="rank" x="540" y="93" text-anchor="middle">#1</text>
+        <text class="rank" x="553.3" y="125" text-anchor="middle">#2</text>
+        <text class="rank" x="626.7" y="93" text-anchor="middle">#3</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--good)"></i>Answers the question</span>
+      <span><i class="dot" style="background:var(--muted)"></i>Related, but not the answer</span>
+      <span><i class="dot" style="background:var(--bad)"></i>Wrong match (frontend 404 page)</span>
+    </div>
+    <p style="font-size:14px">Distance ranks the chunks within one query, but it isn't a fixed measure of correctness. In the 404 query, the wrong #1 and the right #2 are 0.004 apart, and the 0.30 cut-off would throw away the chunk with the actual <code>HTTPException</code> code (0.308).</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="tag copilot">Copilot</span>
+    <h2>The commit check: /doc-impact</h2>
+    <p>The same search, driven by a diff instead of a question.</p>
+  </div>
+  <ol class="stages copilot-list">
+    <li>
+      <div class="st-head"><h3>Copilot reads the commit</h3><span class="where">.github/prompts/doc-impact.prompt.md</span></div>
+      <div class="st-body"><ul><li>In agent mode, Copilot runs <code>git show &lt;sha&gt;</code> (or <code>HEAD</code>) and keeps the commit message and the diff.</li></ul></div>
+    </li>
+    <li>
+      <div class="st-head"><h3>One search per changed file</h3><span class="where">mcp_server.py · find_docs_for_diff()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>The diff is split at each <code>diff --git a/&lt;path&gt;</code> line. Each file's query is the commit message, <code>File: &lt;path&gt;</code> and that file's changes, cut to 2,000 characters.</li>
+          <li>Each file's query is embedded and searched separately, keeping the top 3 per file, so one large file can't crowd out the others.</li>
+          <li>Hits are merged by (source, content). Each merged hit keeps its smallest distance and lists which files matched it in <code>matched_files</code>, sorted closest first.</li>
+        </ul>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Copilot judges and rewrites</h3><span class="where">Copilot's own model</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Copilot drops hits above about 0.30, decides whether each remaining chunk is wrong, incomplete or still correct, and reports <b>Where / Why / Suggested wording</b>.</li>
+          <li>Your code only finds the chunks. The judging and rewording happen in Copilot, and the 0.30 cut-off exists only as an instruction in the prompt, not in code.</li>
+        </ul>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<section>
+  <div class="callout">
+    <h2>Pointing it at a different project</h2>
+    <pre>uv run python -m team_knowledge_assistant.scripts.ingest ../other-project/docs</pre>
+    <ul>
+      <li><span class="sev hi">Mixes</span> There's only one <code>chunks</code> table and no project column. The new docs go in next to the FastAPI docs, and every search covers both.</li>
+      <li><span class="sev hi">Wipes</span> <code>--reset</code> empties the whole table, FastAPI docs included. Without it, re-running a folder stores every chunk again.</li>
+      <li><span class="sev md">Misses</span> Only top-level <code>*.md</code> files are read. <code>docs/guides/setup.md</code> inside that folder would be skipped.</li>
+      <li><span class="sev md">Paths</span> <code>source</code> is the path as you typed it (<code>../other-project/docs/x.md</code>), so citations show that relative path.</li>
+      <li><span class="sev lo">Format</span> Only <code>```</code> fences count as code. With <code>~~~</code> or indented code, a <code># comment</code> line can be read as a heading. Files must be UTF-8.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Not built yet</h2>
+    <p>Everything above only finds chunks. These pieces are still missing, ordered roughly by how soon they'd matter.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Missing</th><th>What happens today</th></tr></thead>
+      <tbody>
+        <tr><td><b>Answer generation</b></td><td>Nothing writes an answer. Search returns chunks, and the Qwen model in LM Studio isn't used yet.</td></tr>
+        <tr><td><b>Keyword / hybrid search</b></td><td>Only vector search, so exact names like <code>HTTPException</code> or <code>response_model</code> can lose to chunks that are merely similar in meaning (the 404 miss).</td></tr>
+        <tr><td><b>Reranking</b></td><td>Results are ranked by distance alone, with no second pass to reorder the top hits.</td></tr>
+        <tr><td><b>Relevance cut-off in code</b></td><td>Always returns <code>k</code> hits, so there's no way to answer "not found".</td></tr>
+        <tr><td><b>Per-project separation</b></td><td>One shared table. There's no way to search only one project's docs.</td></tr>
+        <tr><td><b>Incremental re-ingest</b></td><td>Re-running duplicates rows unless you <code>--reset</code>, and a changed or deleted file can't be updated on its own.</td></tr>
+        <tr><td><b>Recursive folder walk</b></td><td>Subfolders are ignored.</td></tr>
+        <tr><td><b>Cleaning conversion noise</b></td><td>"Ask AI" picture text, site navigation and blank lines are embedded with the content. 250 chunks are under 200 characters.</td></tr>
+        <tr><td><b>Search API endpoint</b></td><td>FastAPI only has <code>/</code> and <code>/health</code>. Search is reachable through the scripts and the MCP server only.</td></tr>
+        <tr><td><b>PDF ingestion</b></td><td><code>data/pdf-to-md.py</code> is run by hand first. The pipeline only reads <code>.md</code>.</td></tr>
+        <tr><td><b>Vector index</b></td><td>Every search checks every row. That's fine at 1.5k rows, but would need an HNSW index at around 100k.</td></tr>
+        <tr><td><b>Tests beyond the chunker</b></td><td>24 tests cover chunking and <code>/health</code>. Embedding, storage, search and the MCP tools have none.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>Numbers come from the local <code>chunks</code> table after ingesting <code>data/sample-docs-md</code> on 14 Nov 2026.</footer>
+</div>
+</body>
+</html>
