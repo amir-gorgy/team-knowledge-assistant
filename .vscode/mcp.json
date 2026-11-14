@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "team-knowledge": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "python", "-m", "team_knowledge_assistant.mcp_server"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
