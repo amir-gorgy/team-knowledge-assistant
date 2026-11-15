@@ -1,0 +1,17 @@
+{
+  // tsc only type-checks here; Node runs the .ts files directly by stripping the types.
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "esnext",
+    "types": ["node"],
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "erasableSyntaxOnly": true, // no enum/namespace: Node can't strip those
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "web",
+  "version": "1.0.0",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "health": "node health-client.ts"
+  },
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  },
+  "description": "Front end for team-knowledge-assistant (for now: a typed /health client)"
+}
