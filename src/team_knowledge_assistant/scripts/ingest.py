@@ -21,7 +21,10 @@ def main() -> None:
 
     files = sorted(args.path.glob("*.md")) if args.path.is_dir() else [args.path]
     chunker = MarkdownChunker()
-    chunks = [c for f in files for c in chunker.chunk(f.read_text(encoding="utf-8"), source=str(f))]
+    chunks = []
+    for file in files:
+        text = file.read_text(encoding="utf-8")
+        chunks.extend(chunker.chunk(text, source=str(file)))
     if args.limit:
         chunks = chunks[: args.limit]
     print(f"{len(files)} file(s) -> {len(chunks)} chunks")

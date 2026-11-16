@@ -42,7 +42,7 @@ class Hit:
     distance: float  # cosine distance: 0 = same direction, 2 = opposite
 
 
-def search(conn: psycopg.Connection, query_embedding: list[float], k: int = 3) -> list[Hit]:
+def vector_search(conn: psycopg.Connection, query_embedding: list[float], k: int = 3) -> list[Hit]:
     rows = conn.execute(
         """
         SELECT source, heading_path, content, embedding <=> %s AS distance
@@ -53,3 +53,31 @@ def search(conn: psycopg.Connection, query_embedding: list[float], k: int = 3) -
         (np.array(query_embedding, dtype=np.float32), k),
     ).fetchall()
     return [Hit(*row) for row in rows]
+
+
+@dataclass
+class KeywordHit:
+    source: str
+    heading_path: list[str]
+    content: str
+    rank: float  # ts_rank: higher = better match (the opposite of Hit.distance); 0 < rank, no fixed max
+
+
+def keyword_search(conn: psycopg.Connection, query: str, k: int = 5) -> list[KeywordHit]:
+    """Full-text search: chunks containing every word of `query`, best-ranked first.
+
+    websearch_to_tsquery stems the words and drops stop words, so "404 when not found"
+    becomes '404' & 'found'. It also understands "quoted phrases", OR and -exclusions.
+    Every remaining word must appear, so long natural-language questions often match nothing.
+    """
+    rows = conn.execute(
+        """
+        SELECT source, heading_path, content, ts_rank(content_tsv, q) AS rank
+        FROM chunks, websearch_to_tsquery('english', %s) AS q
+        WHERE content_tsv @@ q
+        ORDER BY rank DESC
+        LIMIT %s
+        """,
+        (query, k),
+    ).fetchall()
+    return [KeywordHit(*row) for row in rows]

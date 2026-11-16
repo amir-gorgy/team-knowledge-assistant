@@ -137,6 +137,7 @@ svg .near { fill: var(--muted); }
 .sev.hi { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
 .sev.md { background: var(--query-soft); color: var(--query); }
 .sev.lo { background: var(--sunk); color: var(--muted); }
+.ok { color: var(--good); font-weight: 600; }
 footer { font-size: 13px; color: var(--muted); }
 @media (max-width: 560px) {
   h1 { font-size: 26px; }
@@ -150,9 +151,9 @@ footer { font-size: 13px; color: var(--muted); }
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">team-knowledge-assistant · as of 14 Nov 2026</div>
+  <div class="eyebrow">team-knowledge-assistant · as of 16 Nov 2026</div>
   <h1>Knowledge Assistant Pipeline</h1>
-  <p class="lead">A Markdown file is split into chunks, each chunk becomes 768 numbers, and those go into one Postgres table. A question goes through the same model, and the chunks whose numbers are closest come back first. Everything below is what the code does today, using real data from your database.</p>
+  <p class="lead">A Markdown file is split into chunks. Each chunk becomes 768 numbers plus a list of its words, and both go into one Postgres table. A question can then be searched two ways: by meaning, where the chunks whose numbers are closest come back first, or by keyword, where only chunks containing every word come back. Everything below is what the code does today, using real data from your database.</p>
 </header>
 
 <section>
@@ -170,7 +171,7 @@ footer { font-size: 13px; color: var(--muted); }
         <text class="t2" x="95" y="58" text-anchor="middle">a file or a folder</text>
         <rect class="box ingest" x="200" y="16" width="150" height="58" rx="8"/>
         <text class="t1" x="275" y="40" text-anchor="middle">Chunk</text>
-        <text class="t2" x="275" y="58" text-anchor="middle">by heading, ≤ 2,500 chars</text>
+        <text class="t2" x="275" y="58" text-anchor="middle">by heading, ~2,500 chars</text>
         <rect class="box ingest" x="380" y="16" width="150" height="58" rx="8"/>
         <text class="t1" x="455" y="40" text-anchor="middle">Embed</text>
         <text class="t2m" x="455" y="58" text-anchor="middle">search_document: …</text>
@@ -178,8 +179,8 @@ footer { font-size: 13px; color: var(--muted); }
         <text class="t1" x="635" y="40" text-anchor="middle">Insert</text>
         <text class="t2" x="635" y="58" text-anchor="middle">one row per chunk</text>
         <rect class="box ingest" x="740" y="16" width="150" height="58" rx="8"/>
-        <text class="t1" x="815" y="40" text-anchor="middle">1,535 rows</text>
-        <text class="t2" x="815" y="58" text-anchor="middle">from 112 files</text>
+        <text class="t1" x="815" y="40" text-anchor="middle">1,218 rows</text>
+        <text class="t2" x="815" y="58" text-anchor="middle">from 133 files</text>
         <line class="ar ingest" x1="170" y1="45" x2="198" y2="45" marker-end="url(#ai)"/>
         <line class="ar ingest" x1="350" y1="45" x2="378" y2="45" marker-end="url(#ai)"/>
         <line class="ar ingest" x1="530" y1="45" x2="558" y2="45" marker-end="url(#ai)"/>
@@ -206,13 +207,13 @@ footer { font-size: 13px; color: var(--muted); }
         <text class="t2" x="275" y="288" text-anchor="middle">a diff: one per file</text>
         <rect class="box query" x="380" y="246" width="150" height="58" rx="8"/>
         <text class="t1" x="455" y="270" text-anchor="middle">Embed</text>
-        <text class="t2m" x="455" y="288" text-anchor="middle">search_query: …</text>
+        <text class="t2" x="455" y="288" text-anchor="middle">vector mode only</text>
         <rect class="box query" x="560" y="246" width="150" height="58" rx="8"/>
         <text class="t1" x="635" y="270" text-anchor="middle">Search</text>
-        <text class="t2m" x="635" y="288" text-anchor="middle">ORDER BY &lt;=&gt;</text>
+        <text class="t2m" x="635" y="288" text-anchor="middle">&lt;=&gt; or @@</text>
         <rect class="box query" x="740" y="246" width="150" height="58" rx="8"/>
         <text class="t1" x="815" y="270" text-anchor="middle">Top-k hits</text>
-        <text class="t2" x="815" y="288" text-anchor="middle">lowest distance first</text>
+        <text class="t2" x="815" y="288" text-anchor="middle">best match first</text>
         <line class="ar query" x1="170" y1="275" x2="198" y2="275" marker-end="url(#aq)"/>
         <line class="ar query" x1="350" y1="275" x2="378" y2="275" marker-end="url(#aq)"/>
         <line class="ar query" x1="530" y1="275" x2="558" y2="275" marker-end="url(#aq)"/>
@@ -221,18 +222,18 @@ footer { font-size: 13px; color: var(--muted); }
     </div>
     <div class="legend">
       <span><i class="sw ingest"></i>Ingest: run once per set of docs (<code>scripts/ingest.py</code>)</span>
-      <span><i class="sw query"></i>Query: run on every question (<code>scripts/search.py</code>, MCP tools)</span>
+      <span><i class="sw query"></i>Query: run on every question (<code>scripts/search.py --mode vector|keyword</code>, MCP tools)</span>
       <span><i class="sw shared"></i>Shared by both: same model, same table</span>
     </div>
   </div>
-  <p>Both rows have to use the same embedding model. Vectors from different models can't be compared, which is why each row also stores <code>embedding_model</code>.</p>
+  <p>Both rows have to use the same embedding model. Vectors from different models can't be compared, which is why each row also stores <code>embedding_model</code>. Keyword search doesn't use the model at all: Postgres builds each chunk's word list itself when the row is inserted.</p>
 </section>
 
 <section>
   <div class="sec-head">
     <span class="tag ingest">Ingest</span>
     <h2>What happens to a new .md file</h2>
-    <p>Worked example: <code>Query Parameters - FastAPI.md</code>, followed through every step.</p>
+    <p>The sample docs are 133 pages converted from FastAPI's own Markdown source, leaving out the API reference stubs and the release notes. Worked example: <code>Query Parameters - FastAPI.md</code>, followed through every step.</p>
   </div>
   <ol class="stages ingest-list">
     <li>
@@ -256,23 +257,21 @@ footer { font-size: 13px; color: var(--muted); }
           <li>Text before the first heading becomes a chunk with an empty path (<code>skip_preamble</code> is off by default).</li>
         </ul>
         <div class="example">
-          <div class="lbl">Example: this file → 8 chunks</div>
+          <div class="lbl">Example: this file → 6 chunks</div>
           <div class="tbl-wrap">
             <table>
               <thead><tr><th>heading_path</th><th style="text-align:right">chars</th></tr></thead>
               <tbody>
-                <tr><td><i>(empty: text before the first heading)</i></td><td class="num">35</td></tr>
-                <tr><td>Query Parameters &gt; AI coding agents</td><td class="num">1,275</td></tr>
-                <tr><td>Query Parameters &gt; Defaults</td><td class="num">586</td></tr>
-                <tr class="hl"><td>Query Parameters &gt; Optional parameters</td><td class="num">599</td></tr>
-                <tr><td>Query Parameters &gt; Query parameter type conversion</td><td class="num">1,232</td></tr>
-                <tr><td>Query Parameters &gt; Multiple path and query parameters</td><td class="num">770</td></tr>
-                <tr><td>Query Parameters &gt; Required query parameters</td><td class="num">1,802</td></tr>
-                <tr><td>Query Parameters &gt; Required query parameters &gt; Tip</td><td class="num">170</td></tr>
+                <tr><td>Query Parameters</td><td class="num">1,166</td></tr>
+                <tr><td>Query Parameters &gt; Defaults</td><td class="num">555</td></tr>
+                <tr class="hl"><td>Query Parameters &gt; Optional parameters</td><td class="num">609</td></tr>
+                <tr><td>Query Parameters &gt; Query parameter type conversion</td><td class="num">1,248</td></tr>
+                <tr><td>Query Parameters &gt; Multiple path and query parameters</td><td class="num">694</td></tr>
+                <tr><td>Query Parameters &gt; Required query parameters</td><td class="num">1,887</td></tr>
               </tbody>
             </table>
           </div>
-          <p style="font-size:13px;color:var(--muted)">The first two rows are leftovers from the website the docs were converted from (site navigation and an "AI coding agents" banner). They're stored and searched like real content.</p>
+          <p style="font-size:13px;color:var(--muted)">The first row is the page's intro, under the <code># Query Parameters</code> heading itself. Tips in these docs are <code>/// tip</code> blocks rather than headings, so each stays in the chunk of the section it belongs to.</p>
         </div>
       </div>
     </li>
@@ -287,14 +286,16 @@ footer { font-size: 13px; color: var(--muted); }
           <li>Every piece keeps the section's <code>source</code> and <code>heading_path</code>, so it can still be cited.</li>
         </ul>
         <div class="example">
-          <div class="lbl">Result across all 112 sample files</div>
+          <div class="lbl">Result across all 133 sample files</div>
           <div class="stats">
-            <div class="stat"><b>1,535</b><span>chunks</span></div>
-            <div class="stat"><b>583</b><span>median chars</span></div>
-            <div class="stat"><b>1,836</b><span>90th percentile</span></div>
-            <div class="stat"><b>2,497</b><span>longest</span></div>
-            <div class="stat"><b>250</b><span>under 200 chars</span></div>
+            <div class="stat"><b>1,218</b><span>chunks</span></div>
+            <div class="stat"><b>626</b><span>median chars</span></div>
+            <div class="stat"><b>1,641</b><span>90th percentile</span></div>
+            <div class="stat"><b>5,499</b><span>longest</span></div>
+            <div class="stat"><b>24</b><span>over 2,500 chars</span></div>
+            <div class="stat"><b>124</b><span>under 200 chars</span></div>
           </div>
+          <p style="font-size:13px;color:var(--muted)">All 24 chunks over 2,500 characters are a single code block with no text around it. FastAPI's docs also repeat the same example in several sections, so 29 chunks share their exact text with another chunk. The longest, at 5,499 characters, appears 8 times in <code>OAuth2 scopes</code>.</p>
         </div>
       </div>
     </li>
@@ -307,8 +308,8 @@ footer { font-size: 13px; color: var(--muted); }
           <li>Each chunk comes back as a list of 768 numbers. The code puts them back in input order and stops if any vector isn't 768 long.</li>
         </ul>
         <div class="example">
-          <div class="lbl">Example: "Optional parameters" (599 chars) →</div>
-          <pre>[0.0271, 0.0488, −0.1557, −0.0458, 0.0658, … 763 more]</pre>
+          <div class="lbl">Example: "Optional parameters" (609 chars) →</div>
+          <pre>[0.0234, 0.0565, −0.1596, −0.0520, 0.0695, … 763 more]</pre>
           <p style="font-size:13px;color:var(--muted)">No single number means anything by itself. What matters is the direction of the whole list, and chunks about similar things point in similar directions.</p>
         </div>
       </div>
@@ -317,16 +318,18 @@ footer { font-size: 13px; color: var(--muted); }
       <div class="st-head"><h3>Store</h3><span class="where">Ingest/store.py · insert_chunks() · db/init.sql</span></div>
       <div class="st-body">
         <ul>
-          <li>Each chunk becomes one row in <code>chunks</code>: <code>id, source, heading_path, content, embedding_model, embedding vector(768), created_at</code>.</li>
+          <li>Each chunk becomes one row in <code>chunks</code>: <code>id, source, heading_path, content, embedding_model, embedding vector(768), created_at, content_tsv</code>.</li>
+          <li><code>content_tsv</code> is a generated column. On insert, Postgres fills it with the chunk's words, lowercased and stemmed, with stop words dropped and each word's positions kept. A GIN index maps each word to the rows that contain it. The ingest code never writes this column.</li>
           <li>With <code>--reset</code>, the whole table is emptied first. Without it, new rows are added to what's already there, so running the same file twice stores it twice.</li>
           <li>At the end the script prints the table's row count. It should match the chunk count.</li>
         </ul>
         <div class="example">
           <div class="lbl">Example row</div>
-          <pre>id 1033 · source data/sample-docs-md/Query Parameters - FastAPI.md
+          <pre>id 887 · source data/sample-docs-md/Query Parameters - FastAPI.md
 heading_path {Query Parameters, Optional parameters}
-content "## Optional parameters  The same way, you can declare optional query parameters…"
-embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0271, 0.0488, …]</pre>
+content "## Optional parameters  The same way, you can declare optional query parameters, by setting their default to `None`…"
+embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0234, 0.0565, …]
+content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,74 …</pre>
         </div>
       </div>
     </li>
@@ -337,11 +340,11 @@ embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0271, 0.048
   <div class="sec-head">
     <span class="tag query">Query</span>
     <h2>How a question finds chunks</h2>
-    <p>Used by <code>scripts/search.py</code> and the MCP tool <code>search_docs</code>.</p>
+    <p>Two searches, picked with <code>scripts/search.py --mode</code>. Vector is the default and the only one the MCP tools use. Keyword runs from the script only, for now.</p>
   </div>
   <ol class="stages query-list">
     <li>
-      <div class="st-head"><h3>Embed the question</h3><span class="where">Ingest/embedding.py · embed_query()</span></div>
+      <div class="st-head"><h3>Vector: embed the question</h3><span class="where">Ingest/embedding.py · embed_query()</span></div>
       <div class="st-body">
         <ul>
           <li>The same model embeds the question, but with the prefix <code>search_query: </code>. That prefix tells the model this is a question looking for documents.</li>
@@ -350,64 +353,101 @@ embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0271, 0.048
       </div>
     </li>
     <li>
-      <div class="st-head"><h3>Compare against every row</h3><span class="where">Ingest/store.py · search()</span></div>
+      <div class="st-head"><h3>Vector: compare against every row</h3><span class="where">Ingest/store.py · vector_search()</span></div>
       <div class="st-body">
         <ul>
           <li>Postgres runs <code>embedding &lt;=&gt; query</code>, pgvector's <b>cosine distance</b>, for each row, then sorts by it and keeps the top <code>k</code>.</li>
-          <li>There's no vector index yet, so it checks all 1,535 rows every time. That makes the results exact, and at this size it takes milliseconds.</li>
+          <li>There's no vector index yet, so it checks all 1,218 rows every time. That makes the results exact, and at this size it takes milliseconds.</li>
         </ul>
       </div>
     </li>
     <li>
-      <div class="st-head"><h3>Return the hits</h3><span class="where">Hit(source, heading_path, content, distance)</span></div>
+      <div class="st-head"><h3>Keyword: match the words</h3><span class="where">Ingest/store.py · keyword_search()</span></div>
       <div class="st-body">
         <ul>
-          <li>Each hit carries its file, heading path, full text and distance. The code doesn't drop any hit for being too far away. It always returns <code>k</code> results, even if none of them are relevant.</li>
+          <li><code>websearch_to_tsquery</code> turns the question into words the same way the chunks were indexed: lowercased, stemmed, stop words dropped. No model is called.</li>
+          <li><code>content_tsv @@ query</code> keeps only the chunks that contain <b>every</b> remaining word. The GIN index finds them without reading each row.</li>
+          <li><code>ts_rank</code> scores each match, mostly by how often the words appear, and the top <code>k</code> come back highest first.</li>
+        </ul>
+        <div class="example">
+          <pre>"how do I declare an optional query parameter?"
+  →  'declar' &amp; 'option' &amp; 'queri' &amp; 'paramet'</pre>
+          <p style="font-size:13px;color:var(--muted)">Because every word has to match, long questions often find nothing. The full wording of eval question q02, "My endpoint should return a 404 when the item doesn't exist", matches 0 of the 1,218 chunks.</p>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Return the hits</h3><span class="where">Hit · KeywordHit</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Vector hits carry a <code>distance</code>, where lower is closer. The code doesn't drop any hit for being too far away, so it always returns <code>k</code> results, even if none of them are relevant.</li>
+          <li>Keyword hits carry a <code>rank</code>, where higher is better. They can come back as fewer than <code>k</code>, or none at all.</li>
+          <li>Both carry the file and heading path for citing, plus the full chunk text.</li>
         </ul>
       </div>
     </li>
   </ol>
 
   <div class="figure chart">
-    <h3>Reading the score: lower is closer</h3>
-    <p style="color:var(--muted);font-size:14px">Cosine distance runs from 0 (same meaning) through 1 (unrelated) to 2 (opposite). These are the actual top 3 for two of today's test queries.</p>
+    <h3>Reading the vector score: lower is closer</h3>
+    <p style="color:var(--muted);font-size:14px">Cosine distance runs from 0 (same meaning) through 1 (unrelated) to 2 (opposite). These are the actual vector top 3 for two test queries.</p>
     <div class="scroll">
-      <svg viewBox="0 0 720 172" role="img" aria-label="Distances of the top 3 hits for two queries, with the 0.30 cut-off">
+      <svg viewBox="0 0 720 186" role="img" aria-label="Distances of the top 3 vector hits for two queries, with the 0.30 cut-off">
         <line class="grid" x1="200" y1="50" x2="700" y2="50"/>
         <line class="grid" x1="200" y1="105" x2="700" y2="105"/>
         <line class="axis" x1="200" y1="138" x2="700" y2="138"/>
-        <line class="axis" x1="266.7" y1="138" x2="266.7" y2="143"/>
-        <line class="axis" x1="433.3" y1="138" x2="433.3" y2="143"/>
-        <line class="axis" x1="600" y1="138" x2="600" y2="143"/>
-        <text class="tick" x="266.7" y="158" text-anchor="middle">0.20</text>
-        <text class="tick" x="433.3" y="158" text-anchor="middle">0.25</text>
-        <text class="tick" x="600" y="158" text-anchor="middle">0.30</text>
-        <text class="tick" x="700" y="158" text-anchor="end">farther →</text>
-        <text class="tick" x="200" y="158" text-anchor="start">← closer</text>
-        <line class="cut" x1="600" y1="26" x2="600" y2="134"/>
-        <text class="tick" x="600" y="18" text-anchor="middle">0.30 cut-off (Copilot prompt)</text>
+        <line class="axis" x1="255.6" y1="138" x2="255.6" y2="143"/>
+        <line class="axis" x1="394.4" y1="138" x2="394.4" y2="143"/>
+        <line class="axis" x1="533.3" y1="138" x2="533.3" y2="143"/>
+        <line class="axis" x1="672.2" y1="138" x2="672.2" y2="143"/>
+        <text class="tick" x="255.6" y="158" text-anchor="middle">0.20</text>
+        <text class="tick" x="394.4" y="158" text-anchor="middle">0.25</text>
+        <text class="tick" x="533.3" y="158" text-anchor="middle">0.30</text>
+        <text class="tick" x="672.2" y="158" text-anchor="middle">0.35</text>
+        <text class="tick" x="700" y="178" text-anchor="end">farther →</text>
+        <text class="tick" x="200" y="178" text-anchor="start">← closer</text>
+        <line class="cut" x1="533.3" y1="26" x2="533.3" y2="134"/>
+        <text class="tick" x="533.3" y="18" text-anchor="middle">0.30 cut-off (Copilot prompt)</text>
         <text class="rowlbl" x="8" y="54">"optional query parameter?"</text>
         <text class="rowlbl" x="8" y="109">"404 when item not found"</text>
-        <circle class="good" cx="293.3" cy="50" r="6"/>
-        <circle class="near" cx="466.7" cy="50" r="6"/>
-        <circle class="near" cx="486.7" cy="50" r="6"/>
-        <text class="rank" x="293.3" y="38" text-anchor="middle">#1</text>
-        <text class="rank" x="466.7" y="70" text-anchor="middle">#2</text>
-        <text class="rank" x="486.7" y="38" text-anchor="middle">#3</text>
-        <circle class="bad" cx="540" cy="105" r="6"/>
-        <circle class="good" cx="553.3" cy="105" r="6"/>
-        <circle class="good" cx="626.7" cy="105" r="6"/>
-        <text class="rank" x="540" y="93" text-anchor="middle">#1</text>
-        <text class="rank" x="553.3" y="125" text-anchor="middle">#2</text>
-        <text class="rank" x="626.7" y="93" text-anchor="middle">#3</text>
+        <circle class="good" cx="316.7" cy="50" r="6"/>
+        <circle class="near" cx="425" cy="50" r="6"/>
+        <circle class="near" cx="427.8" cy="50" r="6"/>
+        <text class="rank" x="316.7" y="38" text-anchor="middle">#1</text>
+        <text class="rank" x="425" y="38" text-anchor="end">#2</text>
+        <text class="rank" x="427.8" y="70" text-anchor="start">#3</text>
+        <circle class="bad" cx="558.3" cy="105" r="6"/>
+        <circle class="near" cx="594.4" cy="105" r="6"/>
+        <circle class="bad" cx="675" cy="105" r="6"/>
+        <text class="rank" x="558.3" y="93" text-anchor="middle">#1</text>
+        <text class="rank" x="594.4" y="125" text-anchor="middle">#2</text>
+        <text class="rank" x="675" y="93" text-anchor="middle">#3</text>
       </svg>
     </div>
     <div class="legend">
       <span><i class="dot" style="background:var(--good)"></i>Answers the question</span>
       <span><i class="dot" style="background:var(--muted)"></i>Related, but not the answer</span>
-      <span><i class="dot" style="background:var(--bad)"></i>Wrong match (frontend 404 page)</span>
+      <span><i class="dot" style="background:var(--bad)"></i>Wrong match</span>
     </div>
-    <p style="font-size:14px">Distance ranks the chunks within one query, but it isn't a fixed measure of correctness. In the 404 query, the wrong #1 and the right #2 are 0.004 apart, and the 0.30 cut-off would throw away the chunk with the actual <code>HTTPException</code> code (0.308).</p>
+    <p style="font-size:14px">Distance ranks the chunks within one query, but it isn't a fixed measure of correctness. For the 404 query, #1 is the frontend's custom 404 page and #3 is an OAuth2 example. All three hits are above 0.30, so the cut-off in the Copilot prompt would throw every one of them away.</p>
+  </div>
+
+  <div class="figure">
+    <h3>Same question, two searches</h3>
+    <p style="color:var(--muted);font-size:14px">Top 5 for "404 when item not found". Rows marked ✓ are the two sections that eval question q02 expects.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Vector</th><th style="text-align:right">distance</th><th>Keyword</th><th style="text-align:right">rank</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>Frontend &gt; Custom 404 Page</td><td class="num">0.309</td><td>Bigger Applications &gt; Add some custom tags, responses, and dependencies</td><td class="num">0.745</td></tr>
+          <tr><td class="num">2</td><td>Handling Errors &gt; The resulting response</td><td class="num">0.322</td><td>Bigger Applications &gt; Import the dependencies</td><td class="num">0.742</td></tr>
+          <tr><td class="num">3</td><td>Simple OAuth2 &gt; Get your own user data</td><td class="num">0.351</td><td>Bigger Applications &gt; Another module with APIRouter</td><td class="num">0.742</td></tr>
+          <tr><td class="num">4</td><td>Frontend &gt; Fallback Auto</td><td class="num">0.353</td><td><span class="ok">✓</span> Handling Errors &gt; Raise an HTTPException in your code</td><td class="num">0.690</td></tr>
+          <tr><td class="num">5</td><td>Handling Errors (intro)</td><td class="num">0.362</td><td><span class="ok">✓</span> Handling Errors &gt; Import HTTPException</td><td class="num">0.669</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:14px">Keyword search finds both expected sections, at #4 and #5. Vector search finds neither. Keyword's top 3 are sections of Bigger Applications that each quote the same router code, <code>responses={404: {"description": "Not found"}}</code>. The wording matters too: without the word "item", the same keyword search puts the two expected sections at #8 and #19.</p>
   </div>
 </section>
 
@@ -467,24 +507,26 @@ embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0271, 0.048
     <table>
       <thead><tr><th>Missing</th><th>What happens today</th></tr></thead>
       <tbody>
-        <tr><td><b>Answer generation</b></td><td>Nothing writes an answer. Search returns chunks, and the Qwen model in LM Studio isn't used yet.</td></tr>
-        <tr><td><b>Keyword / hybrid search</b></td><td>Only vector search, so exact names like <code>HTTPException</code> or <code>response_model</code> can lose to chunks that are merely similar in meaning (the 404 miss).</td></tr>
-        <tr><td><b>Reranking</b></td><td>Results are ranked by distance alone, with no second pass to reorder the top hits.</td></tr>
-        <tr><td><b>Relevance cut-off in code</b></td><td>Always returns <code>k</code> hits, so there's no way to answer "not found".</td></tr>
+        <tr><td><b>Answer generation</b></td><td>Nothing writes an answer. Search returns chunks, and no chat model is called yet.</td></tr>
+        <tr><td><b>Hybrid search</b></td><td>Vector and keyword search run separately, and nothing merges their two lists yet. Keyword search needs every word to match, so full questions often find nothing. The MCP tools use vector search only, so Copilot can still miss exact names like <code>HTTPException</code>.</td></tr>
+        <tr><td><b>Reranking</b></td><td>Each search orders hits by its own score alone, with no second pass to reorder the top hits.</td></tr>
+        <tr><td><b>Relevance cut-off in code</b></td><td>Vector search always returns <code>k</code> hits, so there's no way to answer "not found".</td></tr>
+        <tr><td><b>Eval runner</b></td><td>10 questions with their expected sources are in <code>evals/questions.jsonl</code>, but no script runs them or scores the results.</td></tr>
         <tr><td><b>Per-project separation</b></td><td>One shared table. There's no way to search only one project's docs.</td></tr>
         <tr><td><b>Incremental re-ingest</b></td><td>Re-running duplicates rows unless you <code>--reset</code>, and a changed or deleted file can't be updated on its own.</td></tr>
         <tr><td><b>Recursive folder walk</b></td><td>Subfolders are ignored.</td></tr>
-        <tr><td><b>Cleaning conversion noise</b></td><td>"Ask AI" picture text, site navigation and blank lines are embedded with the content. 250 chunks are under 200 characters.</td></tr>
+        <tr><td><b>Duplicate examples</b></td><td>A code example is stored once for every section that shows it. 29 chunks share their exact text with another chunk, and the copies crowd each other out of the results.</td></tr>
         <tr><td><b>Search API endpoint</b></td><td>FastAPI only has <code>/</code> and <code>/health</code>. Search is reachable through the scripts and the MCP server only.</td></tr>
         <tr><td><b>PDF ingestion</b></td><td><code>data/pdf-to-md.py</code> is run by hand first. The pipeline only reads <code>.md</code>.</td></tr>
-        <tr><td><b>Vector index</b></td><td>Every search checks every row. That's fine at 1.5k rows, but would need an HNSW index at around 100k.</td></tr>
-        <tr><td><b>Tests beyond the chunker</b></td><td>24 tests cover chunking and <code>/health</code>. Embedding, storage, search and the MCP tools have none.</td></tr>
+        <tr><td><b>Docs converter in the repo</b></td><td>The FastAPI docs were converted by a one-off script that isn't in the repo, so the sample folder can't be rebuilt from the code.</td></tr>
+        <tr><td><b>Vector index</b></td><td>Every vector search checks every row. That's fine at 1.2k rows, but would need an HNSW index at around 100k. Keyword search already has its GIN index.</td></tr>
+        <tr><td><b>Tests beyond the chunker</b></td><td>24 tests cover chunking and <code>/health</code>. Embedding, storage, both searches and the MCP tools have none.</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<footer>Numbers come from the local <code>chunks</code> table after ingesting <code>data/sample-docs-md</code> on 14 Nov 2026.</footer>
+<footer>Numbers and search results come from the local <code>chunks</code> table after ingesting <code>data/sample-docs-md</code> on 16 Nov 2026.</footer>
 </div>
 </body>
 </html>

@@ -10,7 +10,7 @@ import re
 from mcp.server.mcpserver import MCPServer
 
 from team_knowledge_assistant.Ingest.embedding import embed_query
-from team_knowledge_assistant.Ingest.store import Hit, connect, search
+from team_knowledge_assistant.Ingest.store import Hit, connect, vector_search, keyword_search
 
 server = MCPServer(
     name="team-knowledge",
@@ -38,7 +38,7 @@ def _as_dict(h: Hit) -> dict:
 def search_docs(query: str, k: int = 5) -> list[dict]:
     """Find the documentation chunks most similar to a natural-language query."""
     with connect() as conn:
-        return [_as_dict(h) for h in search(conn, embed_query(query), k=k)]
+        return [_as_dict(h) for h in vector_search(conn, embed_query(query), k=k)]
 
 
 @server.tool()
@@ -57,7 +57,7 @@ def find_docs_for_diff(diff: str, commit_message: str = "", k_per_file: int = 3)
     with connect() as conn:
         for path, body in per_file:
             query = f"{commit_message}\nFile: {path}\n{body}"[:MAX_QUERY_CHARS]
-            for h in search(conn, embed_query(query), k=k_per_file):
+            for h in vector_search(conn, embed_query(query), k=k_per_file):
                 key = (h.source, h.content)
                 hit = found.setdefault(key, _as_dict(h) | {"matched_files": []})
                 hit["distance"] = min(hit["distance"], round(h.distance, 3))
