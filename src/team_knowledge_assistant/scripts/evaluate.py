@@ -4,6 +4,8 @@
     uv run python -m team_knowledge_assistant.scripts.evaluate --modes vector keyword hybrid -k 3
     uv run python -m team_knowledge_assistant.scripts.evaluate --keyword-weight 2 --rrf-k 30
     uv run python -m team_knowledge_assistant.scripts.evaluate --sweep          # tune hybrid's weights
+    uv run python -m team_knowledge_assistant.scripts.evaluate --modes hybrid hybrid+rerank
+    uv run python -m team_knowledge_assistant.scripts.evaluate --modes hybrid+rerank --reranker BAAI/bge-reranker-base
 
 Each question lists its gold chunks (file + heading path) and how to match them:
   any   passes if any gold chunk is in the top k; its rank is the best gold chunk's rank
@@ -18,10 +20,16 @@ just "missed"; that is what tells you whether a change moved it closer.
 questions you report on flatters them, so the answerable questions are split by id: odd ids
 ("tune") pick the best setting, even ids ("check") show how it does on questions it wasn't
 picked on.
+
+The +rerank modes re-order the first stage's top --depth hits with a cross-encoder, so a gold
+chunk the first stage didn't return can't appear. Their top-1 score is also shown for the
+not-found questions: unlike a distance or an RRF score, it may be usable as a "not found" signal.
 """
 
 import argparse
 import json
+import statistics
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -138,13 +146,16 @@ def sweep(conn: psycopg.Connection, questions: list[dict], k: int, depth: int) -
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--modes", nargs="+", choices=list(SEARCHES), default=["vector", "hybrid"])
+    parser.add_argument(
+        "--modes", nargs="+", choices=[*SEARCHES, "vector+rerank", "hybrid+rerank"], default=["vector", "hybrid"]
+    )
     parser.add_argument("-k", type=int, default=5, help="a question passes if its gold is in the top k")
     parser.add_argument("--depth", type=int, default=20, help="how far down to look for the gold rank")
     parser.add_argument("--questions", type=Path, default=QUESTIONS)
     parser.add_argument("--keyword-weight", type=float, default=1.0, help="hybrid: keyword list's weight")
     parser.add_argument("--rrf-k", type=int, default=RRF_K, help="hybrid: RRF constant")
     parser.add_argument("--sweep", action="store_true", help="tune hybrid's keyword weight and RRF constant")
+    parser.add_argument("--reranker", help="cross-encoder for the +rerank modes (default: settings.reranker_model)")
     args = parser.parse_args()
 
     if args.sweep:
@@ -158,9 +169,26 @@ def main() -> None:
     if needs_embedding:
         from team_knowledge_assistant.Ingest.embedding import embed_query
 
+    if any(m.endswith("+rerank") for m in args.modes):
+        from team_knowledge_assistant.Ingest.rerank import rerank
+
+    def run(conn: psycopg.Connection, mode: str, question: str, emb: list[float]) -> list:
+        first = mode.removesuffix("+rerank")
+        if first == "hybrid":
+            hits = hybrid_search(conn, question, emb, k=args.depth,
+                                 keyword_weight=args.keyword_weight, rrf_k=args.rrf_k)
+        else:
+            hits = SEARCHES[first](conn, question, emb, args.depth)
+        if mode.endswith("+rerank"):
+            hits = rerank(question, hits, k=len(hits), model=args.reranker)
+        return hits
+
     questions = [json.loads(line) for line in args.questions.read_text().splitlines() if line.strip()]
     ranks: dict[str, dict[str, int | None]] = {m: {} for m in args.modes}
     not_found: list[tuple[str, float, str]] = []
+    rerank_modes = [m for m in args.modes if m.endswith("+rerank")]
+    top_score: dict[str, dict[str, float]] = {m: {} for m in rerank_modes}  # top-1 rerank score per question
+    seconds: dict[str, float] = {m: 0.0 for m in args.modes}
 
     with connect() as conn:
         for q in questions:
@@ -169,14 +197,17 @@ def main() -> None:
                 if needs_embedding:
                     top = vector_search(conn, emb, k=1)[0]
                     not_found.append((q["id"], top.distance, " > ".join(top.heading_path)))
-                continue
-            for mode in args.modes:
-                if mode == "hybrid":
-                    hits = hybrid_search(conn, q["question"], emb, k=args.depth,
-                                         keyword_weight=args.keyword_weight, rrf_k=args.rrf_k)
-                else:
-                    hits = SEARCHES[mode](conn, q["question"], emb, args.depth)
-                ranks[mode][q["id"]] = gold_rank(hits, q["sources"], q["match"])
+                modes = rerank_modes  # only a reranker's score says anything about "not found"
+            else:
+                modes = args.modes
+            for mode in modes:
+                started = time.perf_counter()
+                hits = run(conn, mode, q["question"], emb)
+                seconds[mode] += time.perf_counter() - started
+                if mode in top_score and hits:
+                    top_score[mode][q["id"]] = hits[0].score
+                if q["match"] != "none":
+                    ranks[mode][q["id"]] = gold_rank(hits, q["sources"], q["match"])
 
     def cell(rank: int | None) -> str:
         if rank is None:
@@ -194,6 +225,12 @@ def main() -> None:
     scores = {m: summarize(list(ranks[m].values()), args.k) for m in args.modes}
     print(f"{f'pass@{args.k}':<17}" + "".join(f"{f'{scores[m][0]}/{len(answerable)}':>13}" for m in args.modes))
     print(f"{'MRR':<17}" + "".join(f"{scores[m][1]:>13.3f}" for m in args.modes))
+    for half, keep in (("MRR tune (odd)", True), ("MRR check (even)", False)):
+        half_mrr = {m: summarize([r for qid, r in ranks[m].items() if is_tune(qid) == keep], args.k)[1]
+                    for m in args.modes}
+        print(f"{half:<17}" + "".join(f"{half_mrr[m]:>13.3f}" for m in args.modes))
+    per_q = {m: 1000 * seconds[m] / len(answerable) for m in args.modes}
+    print(f"{'ms / question':<17}" + "".join(f"{per_q[m]:>13.0f}" for m in args.modes))
 
     if len(args.modes) >= 2:
         a, b = args.modes[0], args.modes[1]
@@ -211,6 +248,19 @@ def main() -> None:
         for qid, dist, path in not_found:
             verdict = "ok" if dist > CUTOFF else "FALSE MATCH"
             print(f"{qid:<5}{dist:.3f}  {verdict:<12}{path}")
+
+    for mode in rerank_modes:
+        found = sorted(v for qid, v in top_score[mode].items() if qid in {q["id"] for q in answerable})
+        missing = {qid: v for qid, v in top_score[mode].items() if qid not in {q["id"] for q in answerable}}
+        if not missing:
+            continue
+        worst = max(missing.values())
+        print(f"\n{mode}: top-1 score, answerable vs not-found (can a score threshold say 'not found'?)")
+        print(f"  answerable ({len(found)}): min {found[0]:.2f}, 25% {found[len(found) // 4]:.2f}, "
+              f"median {statistics.median(found):.2f}")
+        print(f"  not-found: " + ", ".join(f"{qid} {v:.2f}" for qid, v in missing.items()))
+        below = sum(1 for v in found if v <= worst)
+        print(f"  a threshold above every not-found ({worst:.2f}) would also reject {below}/{len(found)} answerable")
 
 
 if __name__ == "__main__":

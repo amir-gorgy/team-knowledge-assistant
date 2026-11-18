@@ -95,6 +95,17 @@ uv run python -m team_knowledge_assistant.scripts.search "404 when not found" -k
 Hybrid helps when the answer uses an exact name the question also uses (`404`, `HTTPException`), and can
 hurt when other pages repeat the question's words more often. Compare the modes on questions you know.
 
+Add `--rerank` to any mode to re-order its top 20 with a cross-encoder, the same second pass
+`search_docs` uses. Hits print as `rerank 3.03 was #2` (higher is better; `was` is the first-stage
+rank). If even the best score is below -1.5, it says the docs probably don't cover the question. The
+first run downloads the model (~80 MB).
+
+To score the modes on the eval questions instead of reading results by eye:
+
+```bash
+uv run python -m team_knowledge_assistant.scripts.evaluate --modes vector hybrid hybrid+rerank
+```
+
 ### 2. Check a commit's diff against the docs
 
 This is what Copilot's `/doc-impact` does, without Copilot:

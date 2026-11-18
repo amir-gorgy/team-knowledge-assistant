@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.162.2",
+    "fastembed>=0.9.1",
     "httpx2>=2.16.0",
     "mcp>=2.3.0",
     "pgvector>=0.5.1",

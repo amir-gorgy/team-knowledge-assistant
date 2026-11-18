@@ -10,7 +10,8 @@ Check which documentation a commit affects, using the `team-knowledge` MCP serve
 3. Treat results with distance above ~0.30 as unrelated and drop them. If nothing is left, say
    "No documentation looks affected" and stop. Do not guess.
 4. For each remaining chunk, decide whether the change makes it wrong, incomplete or still correct.
-   Use `search_docs` if you need more context around it.
+   Use `search_docs` if you need more context around it. Its results have a `relevance` score
+   (higher is better) instead of a distance; skip any with `weak_match: true`.
 5. Report one row per affected chunk, most affected first:
    - **Where:** `source > heading path`
    - **Why:** one sentence tying it to a specific line of the diff

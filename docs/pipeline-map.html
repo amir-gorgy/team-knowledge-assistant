@@ -340,7 +340,7 @@ content_tsv '/items':26 'also':71 'app':23 'app.get':25 'async':29 'declar':8 �
   <div class="sec-head">
     <span class="tag query">Query</span>
     <h2>How a question finds chunks</h2>
-    <p>Three searches, picked with <code>scripts/search.py --mode</code>. Vector is the default and the only one the MCP tools use. Keyword and hybrid run from the script only, for now.</p>
+    <p>Three searches, picked with <code>scripts/search.py --mode</code>, and an optional rerank pass (<code>--rerank</code>). The MCP tool <code>search_docs</code> runs hybrid + rerank; <code>find_docs_for_diff</code> still runs vector only.</p>
   </div>
   <ol class="stages query-list">
     <li>
@@ -392,13 +392,31 @@ content_tsv '/items':26 'also':71 'app':23 'app.get':25 'async':29 'declar':8 �
       </div>
     </li>
     <li>
-      <div class="st-head"><h3>Return the hits</h3><span class="where">Hit · KeywordHit · HybridHit</span></div>
+      <div class="st-head"><h3>Rerank: read question and chunk together</h3><span class="where">Ingest/rerank.py · rerank()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>The first stage's top 20 go to a <b>cross-encoder</b> (<code>ms-marco-MiniLM-L-6-v2</code>, run on the CPU through ONNX). It reads the question and one chunk side by side, with the chunk's heading path in front, and scores how well that chunk answers it.</li>
+          <li>Vector search never sees the two together: it compares two vectors made separately. That is why the second pass is more accurate, and why it only re-orders 20 hits: it costs one model run per hit, about 0.7 s per question.</li>
+          <li>It can only re-order what the first stage found. A chunk outside the top 20 stays missing.</li>
+          <li>Unlike a distance or an RRF score, the scores mean the same across questions. A best score below −1.5 marks every hit <code>weak_match</code>: the docs probably don't cover the question.</li>
+        </ul>
+        <div class="example">
+          <pre>"My endpoint should return a 404 when the item does not exist"
+  vector #7  →  hybrid #5  →  rerank #1   Handling Errors &gt; Raise an HTTPException in your code
+"How do I rate-limit requests per user?"
+  best score −1.57  →  weak_match on every hit  (the docs have no rate limiting)</pre>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Return the hits</h3><span class="where">Hit · KeywordHit · HybridHit · RerankedHit</span></div>
       <div class="st-body">
         <ul>
           <li>Vector hits carry a <code>distance</code>, where lower is closer. The code doesn't drop any hit for being too far away, so it always returns <code>k</code> results, even if none of them are relevant.</li>
           <li>Keyword hits carry a <code>rank</code>, where higher is better. They can come back as fewer than <code>k</code>, or none at all.</li>
           <li>Hybrid hits carry the fused <code>score</code>, where higher is better (at most 0.033, first in both lists), plus their place in each list, <code>vector_rank</code> and <code>keyword_rank</code>.</li>
-          <li>All three carry the file and heading path for citing, plus the full chunk text.</li>
+          <li>Reranked hits carry the cross-encoder's <code>score</code> (higher is better, no fixed range) and <code>first_stage_rank</code>, where the first stage had them.</li>
+          <li>All of them carry the file and heading path for citing, plus the full chunk text.</li>
         </ul>
       </div>
     </li>
@@ -525,10 +543,8 @@ content_tsv '/items':26 'also':71 'app':23 'app.get':25 'async':29 'declar':8 �
       <thead><tr><th>Missing</th><th>What happens today</th></tr></thead>
       <tbody>
         <tr><td><b>Answer generation</b></td><td>Nothing writes an answer. Search returns chunks, and no chat model is called yet.</td></tr>
-        <tr><td><b>Hybrid search in the MCP tools</b></td><td><code>search.py --mode hybrid</code> merges both lists, but the MCP tools still use vector search only, so Copilot can still miss exact names like <code>HTTPException</code>. Hybrid helps the 404 questions and hurts the optional-parameter one, so it waits for the eval runner.</td></tr>
-        <tr><td><b>Reranking</b></td><td>Each search orders hits by its own score alone, with no second pass to reorder the top hits.</td></tr>
-        <tr><td><b>Relevance cut-off in code</b></td><td>Vector search always returns <code>k</code> hits, so there's no way to answer "not found".</td></tr>
-        <tr><td><b>Eval runner</b></td><td>10 questions with their expected sources are in <code>evals/questions.jsonl</code>, but no script runs them or scores the results.</td></tr>
+        <tr><td><b>Hybrid search for diffs</b></td><td><code>find_docs_for_diff</code> still uses vector search and the ~0.30 distance cut-off, which lets 2 of 4 "not found" eval questions through. A keyword query built from a whole diff matches most code chunks, so it needs testing on real commits first.</td></tr>
+        <tr><td><b>Trusted "not found"</b></td><td><code>search_docs</code> flags <code>weak_match</code> below a rerank score of −1.5, but that threshold rests on 4 "not found" eval questions. The CLI's other modes and <code>find_docs_for_diff</code> always return <code>k</code> hits.</td></tr>
         <tr><td><b>Per-project separation</b></td><td>One shared table. There's no way to search only one project's docs.</td></tr>
         <tr><td><b>Incremental re-ingest</b></td><td>Re-running duplicates rows unless you <code>--reset</code>, and a changed or deleted file can't be updated on its own.</td></tr>
         <tr><td><b>Recursive folder walk</b></td><td>Subfolders are ignored.</td></tr>
@@ -536,7 +552,7 @@ content_tsv '/items':26 'also':71 'app':23 'app.get':25 'async':29 'declar':8 �
         <tr><td><b>Search API endpoint</b></td><td>FastAPI only has <code>/</code> and <code>/health</code>. Search is reachable through the scripts and the MCP server only.</td></tr>
         <tr><td><b>PDF ingestion</b></td><td><code>data/pdf-to-md.py</code> is run by hand first. The pipeline only reads <code>.md</code>.</td></tr>
         <tr><td><b>Vector index</b></td><td>Every vector search checks every row. That's fine at 1.2k rows, but would need an HNSW index at around 100k. Keyword search already has its GIN index.</td></tr>
-        <tr><td><b>Tests beyond the chunker</b></td><td>31 tests cover chunking, <code>/health</code> and rank fusion. Embedding, storage, the three searches and the MCP tools have none.</td></tr>
+        <tr><td><b>Tests beyond the chunker</b></td><td>49 tests cover chunking, <code>/health</code>, rank fusion, eval scoring and reranking (with a fake model). Embedding, storage, the searches against a real database and the MCP tools have none.</td></tr>
       </tbody>
     </table>
   </div>
