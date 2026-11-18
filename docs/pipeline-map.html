@@ -151,9 +151,9 @@ footer { font-size: 13px; color: var(--muted); }
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">team-knowledge-assistant · as of 16 Nov 2026</div>
+  <div class="eyebrow">team-knowledge-assistant · as of 18 Nov 2026</div>
   <h1>Knowledge Assistant Pipeline</h1>
-  <p class="lead">A Markdown file is split into chunks. Each chunk becomes 768 numbers plus a list of its words, and both go into one Postgres table. A question can then be searched two ways: by meaning, where the chunks whose numbers are closest come back first, or by keyword, where only chunks containing every word come back. Everything below is what the code does today, using real data from your database.</p>
+  <p class="lead">A Markdown file is split into chunks. Each chunk becomes 768 numbers plus a list of its words, and both go into one Postgres table. A question can then be searched three ways: by meaning, where the chunks whose numbers are closest come back first; by keyword, where chunks containing the question's words come back; or both at once, with the two ranked lists merged into one. Everything below is what the code does today, using real data from your database.</p>
 </header>
 
 <section>
@@ -179,8 +179,8 @@ footer { font-size: 13px; color: var(--muted); }
         <text class="t1" x="635" y="40" text-anchor="middle">Insert</text>
         <text class="t2" x="635" y="58" text-anchor="middle">one row per chunk</text>
         <rect class="box ingest" x="740" y="16" width="150" height="58" rx="8"/>
-        <text class="t1" x="815" y="40" text-anchor="middle">1,218 rows</text>
-        <text class="t2" x="815" y="58" text-anchor="middle">from 133 files</text>
+        <text class="t1" x="815" y="40" text-anchor="middle">1,203 rows</text>
+        <text class="t2" x="815" y="58" text-anchor="middle">from 131 files</text>
         <line class="ar ingest" x1="170" y1="45" x2="198" y2="45" marker-end="url(#ai)"/>
         <line class="ar ingest" x1="350" y1="45" x2="378" y2="45" marker-end="url(#ai)"/>
         <line class="ar ingest" x1="530" y1="45" x2="558" y2="45" marker-end="url(#ai)"/>
@@ -207,10 +207,10 @@ footer { font-size: 13px; color: var(--muted); }
         <text class="t2" x="275" y="288" text-anchor="middle">a diff: one per file</text>
         <rect class="box query" x="380" y="246" width="150" height="58" rx="8"/>
         <text class="t1" x="455" y="270" text-anchor="middle">Embed</text>
-        <text class="t2" x="455" y="288" text-anchor="middle">vector mode only</text>
+        <text class="t2" x="455" y="288" text-anchor="middle">not for keyword mode</text>
         <rect class="box query" x="560" y="246" width="150" height="58" rx="8"/>
         <text class="t1" x="635" y="270" text-anchor="middle">Search</text>
-        <text class="t2m" x="635" y="288" text-anchor="middle">&lt;=&gt; or @@</text>
+        <text class="t2m" x="635" y="288" text-anchor="middle">&lt;=&gt;, @@ or both</text>
         <rect class="box query" x="740" y="246" width="150" height="58" rx="8"/>
         <text class="t1" x="815" y="270" text-anchor="middle">Top-k hits</text>
         <text class="t2" x="815" y="288" text-anchor="middle">best match first</text>
@@ -222,7 +222,7 @@ footer { font-size: 13px; color: var(--muted); }
     </div>
     <div class="legend">
       <span><i class="sw ingest"></i>Ingest: run once per set of docs (<code>scripts/ingest.py</code>)</span>
-      <span><i class="sw query"></i>Query: run on every question (<code>scripts/search.py --mode vector|keyword</code>, MCP tools)</span>
+      <span><i class="sw query"></i>Query: run on every question (<code>scripts/search.py --mode vector|keyword|hybrid</code>, MCP tools)</span>
       <span><i class="sw shared"></i>Shared by both: same model, same table</span>
     </div>
   </div>
@@ -233,7 +233,7 @@ footer { font-size: 13px; color: var(--muted); }
   <div class="sec-head">
     <span class="tag ingest">Ingest</span>
     <h2>What happens to a new .md file</h2>
-    <p>The sample docs are 133 pages converted from FastAPI's own Markdown source, leaving out the API reference stubs and the release notes. Worked example: <code>Query Parameters - FastAPI.md</code>, followed through every step.</p>
+    <p>The sample docs are 131 pages of FastAPI 0.165.0's own Markdown source, built by <code>data/fastapi-docs-to-md.py</code>: it inlines the code examples, strips heading anchors and leaves out the API reference stubs and the release notes. Worked example: <code>Query Parameters - FastAPI.md</code>, followed through every step.</p>
   </div>
   <ol class="stages ingest-list">
     <li>
@@ -286,14 +286,14 @@ footer { font-size: 13px; color: var(--muted); }
           <li>Every piece keeps the section's <code>source</code> and <code>heading_path</code>, so it can still be cited.</li>
         </ul>
         <div class="example">
-          <div class="lbl">Result across all 133 sample files</div>
+          <div class="lbl">Result across all 131 sample files</div>
           <div class="stats">
-            <div class="stat"><b>1,218</b><span>chunks</span></div>
-            <div class="stat"><b>626</b><span>median chars</span></div>
-            <div class="stat"><b>1,641</b><span>90th percentile</span></div>
+            <div class="stat"><b>1,203</b><span>chunks</span></div>
+            <div class="stat"><b>633</b><span>median chars</span></div>
+            <div class="stat"><b>1,646</b><span>90th percentile</span></div>
             <div class="stat"><b>5,499</b><span>longest</span></div>
             <div class="stat"><b>24</b><span>over 2,500 chars</span></div>
-            <div class="stat"><b>124</b><span>under 200 chars</span></div>
+            <div class="stat"><b>120</b><span>under 200 chars</span></div>
           </div>
           <p style="font-size:13px;color:var(--muted)">All 24 chunks over 2,500 characters are a single code block with no text around it. FastAPI's docs also repeat the same example in several sections, so 29 chunks share their exact text with another chunk. The longest, at 5,499 characters, appears 8 times in <code>OAuth2 scopes</code>.</p>
         </div>
@@ -309,7 +309,7 @@ footer { font-size: 13px; color: var(--muted); }
         </ul>
         <div class="example">
           <div class="lbl">Example: "Optional parameters" (609 chars) →</div>
-          <pre>[0.0234, 0.0565, −0.1596, −0.0520, 0.0695, … 763 more]</pre>
+          <pre>[0.0228, 0.0567, −0.1582, −0.0524, 0.0684, … 763 more]</pre>
           <p style="font-size:13px;color:var(--muted)">No single number means anything by itself. What matters is the direction of the whole list, and chunks about similar things point in similar directions.</p>
         </div>
       </div>
@@ -325,11 +325,11 @@ footer { font-size: 13px; color: var(--muted); }
         </ul>
         <div class="example">
           <div class="lbl">Example row</div>
-          <pre>id 887 · source data/sample-docs-md/Query Parameters - FastAPI.md
+          <pre>id 870 · source data/sample-docs-md/Query Parameters - FastAPI.md
 heading_path {Query Parameters, Optional parameters}
 content "## Optional parameters  The same way, you can declare optional query parameters, by setting their default to `None`…"
-embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0234, 0.0565, …]
-content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,74 …</pre>
+embedding_model text-embedding-nomic-embed-text-v1.5 · embedding [0.0228, 0.0567, …]
+content_tsv '/items':26 'also':71 'app':23 'app.get':25 'async':29 'declar':8 …</pre>
         </div>
       </div>
     </li>
@@ -340,7 +340,7 @@ content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,7
   <div class="sec-head">
     <span class="tag query">Query</span>
     <h2>How a question finds chunks</h2>
-    <p>Two searches, picked with <code>scripts/search.py --mode</code>. Vector is the default and the only one the MCP tools use. Keyword runs from the script only, for now.</p>
+    <p>Three searches, picked with <code>scripts/search.py --mode</code>. Vector is the default and the only one the MCP tools use. Keyword and hybrid run from the script only, for now.</p>
   </div>
   <ol class="stages query-list">
     <li>
@@ -357,7 +357,7 @@ content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,7
       <div class="st-body">
         <ul>
           <li>Postgres runs <code>embedding &lt;=&gt; query</code>, pgvector's <b>cosine distance</b>, for each row, then sorts by it and keeps the top <code>k</code>.</li>
-          <li>There's no vector index yet, so it checks all 1,218 rows every time. That makes the results exact, and at this size it takes milliseconds.</li>
+          <li>There's no vector index yet, so it checks all 1,203 rows every time. That makes the results exact, and at this size it takes milliseconds.</li>
         </ul>
       </div>
     </li>
@@ -367,22 +367,38 @@ content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,7
         <ul>
           <li><code>websearch_to_tsquery</code> turns the question into words the same way the chunks were indexed: lowercased, stemmed, stop words dropped. No model is called.</li>
           <li><code>content_tsv @@ query</code> keeps only the chunks that contain <b>every</b> remaining word. The GIN index finds them without reading each row.</li>
+          <li>With <code>match="any"</code>, which hybrid search uses, the words are joined with OR instead, so a chunk containing any one of them qualifies.</li>
           <li><code>ts_rank</code> scores each match, mostly by how often the words appear, and the top <code>k</code> come back highest first.</li>
         </ul>
         <div class="example">
           <pre>"how do I declare an optional query parameter?"
   →  'declar' &amp; 'option' &amp; 'queri' &amp; 'paramet'</pre>
-          <p style="font-size:13px;color:var(--muted)">Because every word has to match, long questions often find nothing. The full wording of eval question q02, "My endpoint should return a 404 when the item doesn't exist", matches 0 of the 1,218 chunks.</p>
+          <p style="font-size:13px;color:var(--muted)">Because every word has to match, long questions often find nothing. The full wording of eval question q02, "My endpoint should return a 404 when the item doesn't exist", matches 0 of the 1,203 chunks.</p>
         </div>
       </div>
     </li>
     <li>
-      <div class="st-head"><h3>Return the hits</h3><span class="where">Hit · KeywordHit</span></div>
+      <div class="st-head"><h3>Hybrid: merge the two lists</h3><span class="where">Ingest/store.py · hybrid_search() · reciprocal_rank_fusion()</span></div>
+      <div class="st-body">
+        <ul>
+          <li>Vector search and any-word keyword search each return their top 20.</li>
+          <li><b>Reciprocal rank fusion</b> gives each chunk <code>1 / (60 + rank)</code> for every list it's in, adds them up and sorts. Only positions count, so a cosine distance and a <code>ts_rank</code> never have to be compared.</li>
+          <li>A chunk in both lists beats one at the top of only one. The fused list is cut to <code>k</code>.</li>
+        </ul>
+        <div class="example">
+          <pre>"Handling Errors &gt; Import HTTPException"   vector #5, keyword #9
+  1/(60+5) + 1/(60+9)  =  0.0154 + 0.0145  =  0.0299   →  hybrid #2</pre>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="st-head"><h3>Return the hits</h3><span class="where">Hit · KeywordHit · HybridHit</span></div>
       <div class="st-body">
         <ul>
           <li>Vector hits carry a <code>distance</code>, where lower is closer. The code doesn't drop any hit for being too far away, so it always returns <code>k</code> results, even if none of them are relevant.</li>
           <li>Keyword hits carry a <code>rank</code>, where higher is better. They can come back as fewer than <code>k</code>, or none at all.</li>
-          <li>Both carry the file and heading path for citing, plus the full chunk text.</li>
+          <li>Hybrid hits carry the fused <code>score</code>, where higher is better (at most 0.033, first in both lists), plus their place in each list, <code>vector_rank</code> and <code>keyword_rank</code>.</li>
+          <li>All three carry the file and heading path for citing, plus the full chunk text.</li>
         </ul>
       </div>
     </li>
@@ -411,16 +427,16 @@ content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,7
         <text class="rowlbl" x="8" y="54">"optional query parameter?"</text>
         <text class="rowlbl" x="8" y="109">"404 when item not found"</text>
         <circle class="good" cx="316.7" cy="50" r="6"/>
-        <circle class="near" cx="425" cy="50" r="6"/>
         <circle class="near" cx="427.8" cy="50" r="6"/>
+        <circle class="near" cx="430.6" cy="50" r="6"/>
         <text class="rank" x="316.7" y="38" text-anchor="middle">#1</text>
-        <text class="rank" x="425" y="38" text-anchor="end">#2</text>
-        <text class="rank" x="427.8" y="70" text-anchor="start">#3</text>
-        <circle class="bad" cx="558.3" cy="105" r="6"/>
-        <circle class="near" cx="594.4" cy="105" r="6"/>
+        <text class="rank" x="427.8" y="38" text-anchor="end">#2</text>
+        <text class="rank" x="430.6" y="70" text-anchor="start">#3</text>
+        <circle class="bad" cx="555.6" cy="105" r="6"/>
+        <circle class="near" cx="600" cy="105" r="6"/>
         <circle class="bad" cx="675" cy="105" r="6"/>
-        <text class="rank" x="558.3" y="93" text-anchor="middle">#1</text>
-        <text class="rank" x="594.4" y="125" text-anchor="middle">#2</text>
+        <text class="rank" x="555.6" y="93" text-anchor="middle">#1</text>
+        <text class="rank" x="600" y="125" text-anchor="middle">#2</text>
         <text class="rank" x="675" y="93" text-anchor="middle">#3</text>
       </svg>
     </div>
@@ -433,21 +449,22 @@ content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,7
   </div>
 
   <div class="figure">
-    <h3>Same question, two searches</h3>
-    <p style="color:var(--muted);font-size:14px">Top 5 for "404 when item not found". Rows marked ✓ are the two sections that eval question q02 expects.</p>
+    <h3>Same question, three searches</h3>
+    <p style="color:var(--muted);font-size:14px">Top 5 for "404 when item not found". Rows marked ✓ are the two sections that eval question q02 expects. Hybrid shows each chunk's place in the vector (v) and keyword (k) lists it merged.</p>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>#</th><th>Vector</th><th style="text-align:right">distance</th><th>Keyword</th><th style="text-align:right">rank</th></tr></thead>
+        <thead><tr><th>#</th><th>Vector</th><th style="text-align:right">distance</th><th>Keyword</th><th style="text-align:right">rank</th><th>Hybrid</th><th style="text-align:right">from</th></tr></thead>
         <tbody>
-          <tr><td class="num">1</td><td>Frontend &gt; Custom 404 Page</td><td class="num">0.309</td><td>Bigger Applications &gt; Add some custom tags, responses, and dependencies</td><td class="num">0.745</td></tr>
-          <tr><td class="num">2</td><td>Handling Errors &gt; The resulting response</td><td class="num">0.322</td><td>Bigger Applications &gt; Import the dependencies</td><td class="num">0.742</td></tr>
-          <tr><td class="num">3</td><td>Simple OAuth2 &gt; Get your own user data</td><td class="num">0.351</td><td>Bigger Applications &gt; Another module with APIRouter</td><td class="num">0.742</td></tr>
-          <tr><td class="num">4</td><td>Frontend &gt; Fallback Auto</td><td class="num">0.353</td><td><span class="ok">✓</span> Handling Errors &gt; Raise an HTTPException in your code</td><td class="num">0.690</td></tr>
-          <tr><td class="num">5</td><td>Handling Errors (intro)</td><td class="num">0.362</td><td><span class="ok">✓</span> Handling Errors &gt; Import HTTPException</td><td class="num">0.669</td></tr>
+          <tr><td class="num">1</td><td>Frontend &gt; Custom 404 Page</td><td class="num">0.308</td><td>Bigger Applications &gt; Add some custom tags, responses, and dependencies</td><td class="num">0.745</td><td>Handling Errors &gt; The resulting response</td><td class="num">v2 · k7</td></tr>
+          <tr><td class="num">2</td><td>Handling Errors &gt; The resulting response</td><td class="num">0.324</td><td>Bigger Applications &gt; Another module with APIRouter</td><td class="num">0.742</td><td><span class="ok">✓</span> Handling Errors &gt; Import HTTPException</td><td class="num">v5 · k9</td></tr>
+          <tr><td class="num">3</td><td>Simple OAuth2 &gt; Get your own user data</td><td class="num">0.351</td><td>Bigger Applications &gt; Import the dependencies</td><td class="num">0.742</td><td>Frontend &gt; Custom 404 Page</td><td class="num">v1 · k19</td></tr>
+          <tr><td class="num">4</td><td>Frontend &gt; Fallback Auto</td><td class="num">0.354</td><td><span class="ok">✓</span> Handling Errors &gt; Raise an HTTPException in your code</td><td class="num">0.690</td><td>Handling Errors &gt; Add custom headers</td><td class="num">v9 · k10</td></tr>
+          <tr><td class="num">5</td><td><span class="ok">✓</span> Handling Errors &gt; Import HTTPException</td><td class="num">0.362</td><td><span class="ok">✓</span> Handling Errors &gt; Import HTTPException</td><td class="num">0.669</td><td>Handling Errors (intro)</td><td class="num">v6 · k16</td></tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size:14px">Keyword search finds both expected sections, at #4 and #5. Vector search finds neither. Keyword's top 3 are sections of Bigger Applications that each quote the same router code, <code>responses={404: {"description": "Not found"}}</code>. The wording matters too: without the word "item", the same keyword search puts the two expected sections at #8 and #19.</p>
+    <p style="font-size:14px">Keyword search finds both expected sections, at #4 and #5, and vector search finds one, at #5. Keyword's top 3 are sections of Bigger Applications that each quote the same router code, <code>responses={404: {"description": "Not found"}}</code>. Hybrid lifts <i>Import HTTPException</i> to #2 because it is fairly high in both lists, and four of its top 5 come from the right page. The wording matters too: without the word "item", keyword search puts the two expected sections at #8 and #13, vector at #17, and hybrid at #5.</p>
+    <p style="font-size:14px">Hybrid can also make things worse. For "how do I declare an optional query parameter?", vector search puts <i>Query Parameters &gt; Optional parameters</i> at #1. Keyword search prefers the <i>Optional … Parameter Models</i> pages, which repeat the same words, and hybrid drops the right answer to #4. Which one wins overall is for the eval questions to decide.</p>
   </div>
 </section>
 
@@ -508,7 +525,7 @@ content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,7
       <thead><tr><th>Missing</th><th>What happens today</th></tr></thead>
       <tbody>
         <tr><td><b>Answer generation</b></td><td>Nothing writes an answer. Search returns chunks, and no chat model is called yet.</td></tr>
-        <tr><td><b>Hybrid search</b></td><td>Vector and keyword search run separately, and nothing merges their two lists yet. Keyword search needs every word to match, so full questions often find nothing. The MCP tools use vector search only, so Copilot can still miss exact names like <code>HTTPException</code>.</td></tr>
+        <tr><td><b>Hybrid search in the MCP tools</b></td><td><code>search.py --mode hybrid</code> merges both lists, but the MCP tools still use vector search only, so Copilot can still miss exact names like <code>HTTPException</code>. Hybrid helps the 404 questions and hurts the optional-parameter one, so it waits for the eval runner.</td></tr>
         <tr><td><b>Reranking</b></td><td>Each search orders hits by its own score alone, with no second pass to reorder the top hits.</td></tr>
         <tr><td><b>Relevance cut-off in code</b></td><td>Vector search always returns <code>k</code> hits, so there's no way to answer "not found".</td></tr>
         <tr><td><b>Eval runner</b></td><td>10 questions with their expected sources are in <code>evals/questions.jsonl</code>, but no script runs them or scores the results.</td></tr>
@@ -518,15 +535,14 @@ content_tsv '/items':26 'app':23 'declar':8 'default':15,69 'fastapi':20,22,24,7
         <tr><td><b>Duplicate examples</b></td><td>A code example is stored once for every section that shows it. 29 chunks share their exact text with another chunk, and the copies crowd each other out of the results.</td></tr>
         <tr><td><b>Search API endpoint</b></td><td>FastAPI only has <code>/</code> and <code>/health</code>. Search is reachable through the scripts and the MCP server only.</td></tr>
         <tr><td><b>PDF ingestion</b></td><td><code>data/pdf-to-md.py</code> is run by hand first. The pipeline only reads <code>.md</code>.</td></tr>
-        <tr><td><b>Docs converter in the repo</b></td><td>The FastAPI docs were converted by a one-off script that isn't in the repo, so the sample folder can't be rebuilt from the code.</td></tr>
         <tr><td><b>Vector index</b></td><td>Every vector search checks every row. That's fine at 1.2k rows, but would need an HNSW index at around 100k. Keyword search already has its GIN index.</td></tr>
-        <tr><td><b>Tests beyond the chunker</b></td><td>24 tests cover chunking and <code>/health</code>. Embedding, storage, both searches and the MCP tools have none.</td></tr>
+        <tr><td><b>Tests beyond the chunker</b></td><td>31 tests cover chunking, <code>/health</code> and rank fusion. Embedding, storage, the three searches and the MCP tools have none.</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<footer>Numbers and search results come from the local <code>chunks</code> table after ingesting <code>data/sample-docs-md</code> on 16 Nov 2026.</footer>
+<footer>Numbers and search results come from the local <code>chunks</code> table after building <code>data/sample-docs-md</code> from FastAPI 0.165.0 with <code>data/fastapi-docs-to-md.py</code> and ingesting it on 18 Nov 2026.</footer>
 </div>
 </body>
 </html>

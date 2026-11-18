@@ -31,6 +31,16 @@ curl -s localhost:1234/v1/models | grep nomic             # should print the mod
 Optional: copy `.env.example` to `.env` to change the database URL or the embedding endpoint. Without it,
 the defaults in `config.py` point at the services above.
 
+Build the sample docs. `data/sample-docs-md/` isn't in git, so a fresh clone starts without it. This
+downloads FastAPI's Markdown docs from GitHub (pinned to release 0.165.0), inlines their code examples
+and writes one flat file per page:
+
+```bash
+uv run python data/fastapi-docs-to-md.py                  # 131 pages -> data/sample-docs-md
+```
+
+It stops if the folder already has `.md` files; move them away first to rebuild.
+
 Embed the sample docs into pgvector. `--reset` empties the table first, so the command can be re-run
 safely:
 
@@ -38,7 +48,7 @@ safely:
 uv run python -m team_knowledge_assistant.scripts.ingest data/sample-docs-md --reset
 ```
 
-Expected output: `112 file(s) -> 1535 chunks` and `chunks table now has 1535 rows`. The numbers change if
+Expected output: `131 file(s) -> 1203 chunks` and `chunks table now has 1203 rows`. The numbers change if
 the docs or the chunker change. What matters is that the row count matches the chunk count.
 
 To test a small batch first, add `--limit 20`.
@@ -46,6 +56,16 @@ To test a small batch first, add `--limit 20`.
 > `db/init.sql` creates the `chunks` table only when the Docker volume is new. If you get
 > `relation "chunks" does not exist`, apply it by hand:
 > `docker compose exec -T db psql -U app -d tka < db/init.sql`
+>
+> A database created before keyword search was added has the table but not its word column. If keyword
+> or hybrid search fails with `column "content_tsv" does not exist`, add it once (no re-ingest needed;
+> Postgres fills it for the existing rows):
+>
+> ```bash
+> docker compose exec -T db psql -U app -d tka \
+>   -c "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;" \
+>   -c "CREATE INDEX IF NOT EXISTS chunks_content_tsv_idx ON chunks USING gin (content_tsv);"
+> ```
 
 ## Option A: Local
 
@@ -58,6 +78,22 @@ uv run python -m team_knowledge_assistant.scripts.search "how do I set a respons
 Each hit prints `[distance] file > heading path` and a preview. Lower distance means a closer match.
 Good matches land around 0.20–0.25. Above about 0.30 they're usually unrelated. Try questions you know
 the answer to, and check that the right section makes the top 3.
+
+`--mode` picks the search:
+
+```bash
+uv run python -m team_knowledge_assistant.scripts.search "404 when not found" -k 5 --mode keyword
+uv run python -m team_knowledge_assistant.scripts.search "404 when not found" -k 5 --mode hybrid
+```
+
+| Mode | Finds | Score shown |
+| --- | --- | --- |
+| `vector` (default) | closest meaning | `dist 0.316`: lower is better |
+| `keyword` | chunks containing **every** word; long questions often match nothing. Skips LM Studio | `rank 0.183`: higher is better |
+| `hybrid` | both lists (keyword with **any** word) merged by reciprocal rank fusion | `rrf 0.0263 v17 k15`: higher is better; 17th by vector, 15th by keyword (`-` = not in that list) |
+
+Hybrid helps when the answer uses an exact name the question also uses (`404`, `HTTPException`), and can
+hurt when other pages repeat the question's words more often. Compare the modes on questions you know.
 
 ### 2. Check a commit's diff against the docs
 

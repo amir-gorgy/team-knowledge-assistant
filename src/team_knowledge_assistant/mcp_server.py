@@ -10,7 +10,7 @@ import re
 from mcp.server.mcpserver import MCPServer
 
 from team_knowledge_assistant.Ingest.embedding import embed_query
-from team_knowledge_assistant.Ingest.store import Hit, connect, vector_search, keyword_search
+from team_knowledge_assistant.Ingest.store import Hit, connect, vector_search
 
 server = MCPServer(
     name="team-knowledge",

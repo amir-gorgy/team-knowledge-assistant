@@ -51,9 +51,13 @@ The embedding endpoint is any OpenAI-compatible server, set through `EMBEDDING_*
 
 - **Distance threshold:** the cut-off (~0.30) is a guess from a few queries. Tune it on the eval set.
 - **Vector-only search:** exact names in diffs (functions, flags, endpoints) need keyword search too.
-  Add Postgres full-text search and merge the two rankings (hybrid search).
+  Hybrid search (vector + Postgres full-text, merged by reciprocal rank fusion) is built and runs from
+  `scripts/search.py --mode hybrid`, but the MCP tools still call `vector_search()`. Switch them once
+  the eval questions show hybrid wins overall: it helps the 404 questions and hurts "optional query
+  parameter".
 - **Runs on demand:** a `post-commit` hook or a GitHub Action could call the same tools and post the
   report on the PR. An Action can't reach LM Studio on localhost, so it would need a hosted embedding
   endpoint.
-- **Chunk noise:** PDF-to-Markdown leftovers ("Ask AI" picture text, blank lines) end up in chunks
-  and their embeddings.
+- **Duplicate chunks:** FastAPI's docs repeat the same code example in several sections, so 29 chunks
+  share their exact text with another. The copies crowd each other out of the top results; keyword
+  search on "404 when not found" fills its top 3 with one repeated router example.
