@@ -107,18 +107,27 @@ def keyword_search(
 RRF_K = 60  # the constant from the original RRF paper (Cormack et al., 2009); rarely worth tuning
 
 
-def reciprocal_rank_fusion(ranked_lists: Sequence[Sequence[int]], k: int = RRF_K) -> list[tuple[int, float]]:
+def reciprocal_rank_fusion(
+    ranked_lists: Sequence[Sequence[int]], k: int = RRF_K, weights: Sequence[float] | None = None
+) -> list[tuple[int, float]]:
     """Merge several best-first lists of ids into one, best first.
 
-    Each id scores sum(1 / (k + rank)) over the lists it appears in (rank starts at 1).
-    Only positions are used, never the raw scores, so a cosine distance and a ts_rank can be
-    combined even though they are on unrelated scales. An id near the top of both lists beats
-    one at the very top of a single list. Ties keep first-seen order.
+    Each id scores sum(weight / (k + rank)) over the lists it appears in (rank starts at 1;
+    every weight is 1 unless given). Only positions are used, never the raw scores, so a cosine
+    distance and a ts_rank can be combined even though they are on unrelated scales. An id near
+    the top of both lists beats one at the very top of a single list. Ties keep first-seen order.
+
+    A weight of 2 makes rank r in that list count like rank r in two lists. A smaller k makes the
+    top ranks count for more: with k=60, #1 vs #10 is 1/61 vs 1/70 (15% apart); with k=10,
+    1/11 vs 1/20 (82% apart).
     """
+    weights = weights or [1.0] * len(ranked_lists)
+    if len(weights) != len(ranked_lists):
+        raise ValueError(f"{len(ranked_lists)} lists but {len(weights)} weights")
     scores: dict[int, float] = {}
-    for ranked in ranked_lists:
+    for ranked, weight in zip(ranked_lists, weights):
         for rank, id_ in enumerate(ranked, start=1):
-            scores[id_] = scores.get(id_, 0.0) + 1 / (k + rank)
+            scores[id_] = scores.get(id_, 0.0) + weight / (k + rank)
     return sorted(scores.items(), key=lambda item: item[1], reverse=True)
 
 
@@ -128,7 +137,7 @@ class HybridHit:
     source: str
     heading_path: list[str]
     content: str
-    score: float  # RRF score: higher = better; at most 2 / (RRF_K + 1) ~ 0.033 (rank 1 in both lists)
+    score: float  # RRF score: higher = better; at most (1 + keyword_weight) / (rrf_k + 1), rank 1 in both
     vector_rank: int | None  # position in the vector candidates, None if it wasn't there
     keyword_rank: int | None  # position in the keyword candidates, None if it wasn't there
 
@@ -139,11 +148,14 @@ def hybrid_search(
     query_embedding: list[float],
     k: int = 5,
     candidates: int = 20,
+    keyword_weight: float = 1.0,
+    rrf_k: int = RRF_K,
 ) -> list[HybridHit]:
     """Vector search + any-word keyword search, merged with reciprocal rank fusion.
 
     Each side returns its top `candidates`; the fused list is cut to `k`. Taking more candidates
     than `k` lets a chunk ranked, say, 8th by both sides still reach the top.
+    `keyword_weight` scales the keyword list's votes against the vector list's (weight 1).
     """
     vector_hits = vector_search(conn, query_embedding, k=candidates)
     keyword_hits = keyword_search(conn, query, k=candidates, match="any")
@@ -162,5 +174,5 @@ def hybrid_search(
             vector_rank=vector_ids.index(id_) + 1 if id_ in vector_ids else None,
             keyword_rank=keyword_ids.index(id_) + 1 if id_ in keyword_ids else None,
         )
-        for id_, score in reciprocal_rank_fusion([vector_ids, keyword_ids])[:k]
+        for id_, score in reciprocal_rank_fusion([vector_ids, keyword_ids], k=rrf_k, weights=[1.0, keyword_weight])[:k]
     ]
