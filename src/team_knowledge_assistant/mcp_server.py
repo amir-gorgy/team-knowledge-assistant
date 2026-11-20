@@ -7,13 +7,16 @@ The first search_docs call also loads the reranker (a ~80 MB download the very f
 """
 
 import re
+from dataclasses import asdict
 
 from mcp.server.mcpserver import MCPServer
 
+from team_knowledge_assistant.answer import answer
 from team_knowledge_assistant.config import settings
 from team_knowledge_assistant.Ingest.embedding import embed_query
-from team_knowledge_assistant.Ingest.rerank import RerankedHit, rerank
-from team_knowledge_assistant.Ingest.store import Hit, connect, hybrid_search, vector_search
+from team_knowledge_assistant.Ingest.rerank import RerankedHit
+from team_knowledge_assistant.Ingest.store import Hit, connect, vector_search
+from team_knowledge_assistant.retrieval import retrieve
 
 server = MCPServer(
     name="team-knowledge",
@@ -23,14 +26,16 @@ server = MCPServer(
         "search_docs results are best first with a `relevance` score (higher is better). "
         "If every result has weak_match: true, the docs most likely don't cover the question: "
         "say so instead of answering from those chunks. "
-        "find_docs_for_diff results have a `distance` instead, where larger means a weaker match."
+        "find_docs_for_diff results have a `distance` instead, where larger means a weaker match. "
+        "ask returns either a finished answer with [n] citations, or numbered sources and "
+        "instructions for you to write the answer from; if found is false, tell the user the "
+        "docs don't cover it rather than answering yourself."
     ),
 )
 
 # A unified diff hunk starts with "@@ -a,b +c,d @@"; a file section starts with "diff --git".
 FILE_HEADER = re.compile(r"^diff --git a/(\S+) b/\S+", re.MULTILINE)
 MAX_QUERY_CHARS = 2000  # keep each embedded query well under the model's context
-RERANK_CANDIDATES = 20  # hybrid hits the reranker re-orders; 40 scored no better on the eval and took 2x as long
 
 
 def _as_dict(h: Hit) -> dict:
@@ -59,9 +64,32 @@ def search_docs(query: str, k: int = 5) -> list[dict]:
     Hybrid search (meaning + exact words) picks candidates, then a cross-encoder re-orders them.
     Results come best first. weak_match is true when a chunk probably doesn't answer the question.
     """
-    with connect() as conn:
-        candidates = hybrid_search(conn, query, embed_query(query), k=RERANK_CANDIDATES)
-    return [_reranked_dict(h) for h in rerank(query, candidates, k=k)]
+    return [_reranked_dict(h) for h in retrieve(query, k=k)]
+
+
+# answer_backend "copilot": the rules the local model gets in its system prompt, worded for the
+# client's model, which answers a person rather than replying NOT_FOUND to code.
+COPILOT_INSTRUCTIONS = (
+    "Write the answer yourself, using ONLY these sources, never your own knowledge. "
+    "After each sentence that uses a source, cite it as [n] and list the cited sources as "
+    "'[n] source > heading_path' at the end. If the sources don't answer the question, "
+    "say the documentation doesn't cover it, and don't answer from general knowledge."
+)
+
+
+@server.tool()
+def ask(question: str, k: int = 5) -> dict:
+    """Answer a question from the documentation with cited sources, or say it isn't covered.
+
+    found: false means the docs don't cover it (`not_found_reason` says how that was decided):
+    tell the user so instead of answering. Otherwise one of two shapes, set by the server:
+    - `text` holds a finished answer whose [n] markers point at `citations`.
+    - `text` is null: write the answer from `sources` (numbered [n]) following `instructions`.
+    """
+    result = asdict(answer(question, k=k))
+    if result["text"] is None:
+        result["instructions"] = COPILOT_INSTRUCTIONS
+    return result
 
 
 @server.tool()

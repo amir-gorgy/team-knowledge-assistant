@@ -536,23 +536,22 @@ content_tsv '/items':26 'also':71 'app':23 'app.get':25 'async':29 'declar':8 �
 <section>
   <div class="sec-head">
     <h2>Not built yet</h2>
-    <p>Everything above only finds chunks. These pieces are still missing, ordered roughly by how soon they'd matter.</p>
+    <p>Everything above finds chunks; <code>ask</code> (CLI, <code>POST /ask</code>, MCP) writes a cited answer from them. These pieces are still missing, ordered roughly by how soon they'd matter.</p>
   </div>
   <div class="tbl-wrap">
     <table>
       <thead><tr><th>Missing</th><th>What happens today</th></tr></thead>
       <tbody>
-        <tr><td><b>Answer generation</b></td><td>Nothing writes an answer. Search returns chunks, and no chat model is called yet.</td></tr>
         <tr><td><b>Hybrid search for diffs</b></td><td><code>find_docs_for_diff</code> still uses vector search and the ~0.30 distance cut-off, which lets 2 of 4 "not found" eval questions through. A keyword query built from a whole diff matches most code chunks, so it needs testing on real commits first.</td></tr>
-        <tr><td><b>Trusted "not found"</b></td><td><code>search_docs</code> flags <code>weak_match</code> below a rerank score of −1.5, but that threshold rests on 4 "not found" eval questions. The CLI's other modes and <code>find_docs_for_diff</code> always return <code>k</code> hits.</td></tr>
+        <tr><td><b>Trusted "not found"</b></td><td><code>search_docs</code> flags <code>weak_match</code> below a rerank score of −1.5, and <code>ask</code> drops those chunks and answers "not found" when none are left, but that threshold rests on 4 "not found" eval questions. Answers aren't scored on the eval yet. The CLI's other modes and <code>find_docs_for_diff</code> always return <code>k</code> hits.</td></tr>
         <tr><td><b>Per-project separation</b></td><td>One shared table. There's no way to search only one project's docs.</td></tr>
         <tr><td><b>Incremental re-ingest</b></td><td>Re-running duplicates rows unless you <code>--reset</code>, and a changed or deleted file can't be updated on its own.</td></tr>
         <tr><td><b>Recursive folder walk</b></td><td>Subfolders are ignored.</td></tr>
         <tr><td><b>Duplicate examples</b></td><td>A code example is stored once for every section that shows it. 29 chunks share their exact text with another chunk, and the copies crowd each other out of the results.</td></tr>
-        <tr><td><b>Search API endpoint</b></td><td>FastAPI only has <code>/</code> and <code>/health</code>. Search is reachable through the scripts and the MCP server only.</td></tr>
+        <tr><td><b>Search API endpoint</b></td><td>FastAPI has <code>/</code>, <code>/health</code> and <code>POST /ask</code>. Raw search results are reachable through the scripts and the MCP server only.</td></tr>
         <tr><td><b>PDF ingestion</b></td><td><code>data/pdf-to-md.py</code> is run by hand first. The pipeline only reads <code>.md</code>.</td></tr>
         <tr><td><b>Vector index</b></td><td>Every vector search checks every row. That's fine at 1.2k rows, but would need an HNSW index at around 100k. Keyword search already has its GIN index.</td></tr>
-        <tr><td><b>Tests beyond the chunker</b></td><td>49 tests cover chunking, <code>/health</code>, rank fusion, eval scoring and reranking (with a fake model). Embedding, storage, the searches against a real database and the MCP tools have none.</td></tr>
+        <tr><td><b>Tests beyond the chunker</b></td><td>63 tests cover chunking, <code>/health</code>, rank fusion, eval scoring, reranking, and answer parsing, the not-found gate and <code>/ask</code> (with fake models). Embedding, storage, the searches against a real database and the MCP tools have none.</td></tr>
       </tbody>
     </table>
   </div>

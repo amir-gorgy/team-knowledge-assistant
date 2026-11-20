@@ -13,7 +13,9 @@ Run every command from the project root. For how the parts fit together, see
 
 - Docker with Compose
 - [uv](https://docs.astral.sh/uv/)
-- [LM Studio](https://lmstudio.ai/) with `text-embedding-nomic-embed-text-v1.5` downloaded, and its `lms` CLI
+- [LM Studio](https://lmstudio.ai/) with `text-embedding-nomic-embed-text-v1.5` downloaded, and its `lms` CLI.
+  For answers written locally (`ask` with the default `ANSWER_BACKEND=local`), also `qwen/qwen3.5-9b`
+  (~10 GB loaded)
 - VS Code with GitHub Copilot Chat (Copilot path only)
 - Node.js (only for the optional MCP Inspector)
 
@@ -26,7 +28,11 @@ docker compose up -d db                                   # Postgres + pgvector 
 lms server start                                          # LM Studio API on :1234
 lms load text-embedding-nomic-embed-text-v1.5             # the embedding model (not a chat model)
 curl -s localhost:1234/v1/models | grep nomic             # should print the model id
+lms load qwen/qwen3.5-9b --context-length 8192            # chat model, only for `ask` with ANSWER_BACKEND=local
 ```
+
+Load the chat model with `--context-length 8192` or more. Five chunks can reach about 7k tokens, and a
+smaller context cuts the prompt off silently.
 
 Optional: copy `.env.example` to `.env` to change the database URL or the embedding endpoint. Without it,
 the defaults in `config.py` point at the services above.
@@ -106,7 +112,56 @@ To score the modes on the eval questions instead of reading results by eye:
 uv run python -m team_knowledge_assistant.scripts.evaluate --modes vector hybrid hybrid+rerank
 ```
 
-### 2. Check a commit's diff against the docs
+### 2. Ask a question
+
+`ask` retrieves the top 5 chunks the same way `search_docs` does (hybrid, then rerank), and the chat
+model writes an answer from them with `[n]` citations:
+
+```bash
+uv run python -m team_knowledge_assistant.scripts.ask "How do I make a query parameter optional?"
+uv run python -m team_knowledge_assistant.scripts.ask "How do I rate-limit requests per user?" --show-hits
+```
+
+The answer is followed by a **Sources** list, one line per `[n]` the answer uses. `--show-hits` first
+lists the 5 retrieved chunks with their rerank score and the `[n]` each was sent as.
+
+It prints `Not found in the docs.` instead of guessing, with the reason underneath:
+
+| Reason | What happened |
+| --- | --- |
+| `no_relevant_chunks` | Every chunk scored below `RERANKER_NOT_FOUND_BELOW` (-1.5). They are never sent, and the model isn't called. |
+| `model_said_not_found` | Some chunks passed, but the model replied `NOT_FOUND`: they don't answer the question. |
+| `no_valid_citations` | The model answered without citing any source it was sent, so the answer isn't shown. |
+
+To try the model's own judgment without the score check, turn it off for one run:
+`RERANKER_NOT_FOUND_BELOW=-10 uv run python -m team_knowledge_assistant.scripts.ask "..."`.
+
+The same answer is available over HTTP. Start the API, then post a question:
+
+```bash
+uv run uvicorn team_knowledge_assistant.main:app --reload
+curl -s localhost:8000/ask -H 'Content-Type: application/json' \
+  -d '{"question": "My endpoint should return a 404 when the item does not exist. How do I do that?"}'
+```
+
+It returns `{"text", "found", "citations": [{"n", "source", "heading_path"}], "not_found_reason",
+"sources"}`. A not-found answer is still a `200` with `"found": false`. A `503` means Postgres or LM
+Studio is down, and a `502` means the model's reply was cut off.
+
+**Without a chat model.** Set `ANSWER_BACKEND=copilot` in `.env` to skip the local model. The not-found
+check still runs, but no answer is written: `text` is `null` and `sources` lists the chunks that passed,
+numbered `[n]`. Through MCP, Copilot writes the answer from them, following the `instructions` field the
+tool adds. The CLI and `POST /ask` return the sources for you to read. The embedding model is still
+needed.
+
+| | `ANSWER_BACKEND=local` (default) | `ANSWER_BACKEND=copilot` |
+| --- | --- | --- |
+| Writes the answer | the chat model in LM Studio | Copilot (MCP); nobody (CLI, `POST /ask`) |
+| "Not found" when no chunk scores above -1.5 | yes | yes |
+| Model's `NOT_FOUND` and citation checks | yes, in code | no: Copilot is told the rules but they aren't checked |
+| Needs the chat model loaded | yes | no |
+
+### 3. Check a commit's diff against the docs
 
 This is what Copilot's `/doc-impact` does, without Copilot:
 
@@ -120,13 +175,13 @@ for r in find_docs_for_diff(diff, 'commit message here')[:5]:
 "
 ```
 
-### 3. (Optional) Browse the MCP tools
+### 4. (Optional) Browse the MCP tools
 
 ```bash
 npx @modelcontextprotocol/inspector uv run python -m team_knowledge_assistant.mcp_server
 ```
 
-Connect, open **Tools**, and call `search_docs`. Copilot sees the same two tools.
+Connect, open **Tools**, and call `search_docs` or `ask`. Copilot sees the same three tools.
 
 ## Option B: Copilot (VS Code)
 
@@ -134,12 +189,12 @@ Connect, open **Tools**, and call `search_docs`. Copilot sees the same two tools
 
 Open [`.vscode/mcp.json`](../.vscode/mcp.json) and click **Start** above `"team-knowledge"`. Or open the
 Command Palette and run **MCP: List Servers → team-knowledge → Start Server**. Say yes when VS Code asks
-whether to trust the server. It should show **Running** with 2 tools.
+whether to trust the server. It should show **Running** with 3 tools.
 
 ### 2. Switch Copilot Chat to Agent mode
 
 Pick **Agent** in the chat mode picker. Ask and Edit modes don't call MCP tools. Click the **tools** icon
-and check that `search_docs` and `find_docs_for_diff` are ticked under `team-knowledge`.
+and check that `search_docs`, `ask` and `find_docs_for_diff` are ticked under `team-knowledge`.
 
 ### 3. Try a search
 
@@ -147,6 +202,11 @@ and check that `search_docs` and `find_docs_for_diff` are ticked under `team-kno
 
 Approve the tool call when asked. The answer should cite
 `Query Parameters - FastAPI.md > Query Parameters > Optional parameters`.
+
+`ask` works the same way: "Use ask to find out how to make a query parameter optional." With
+`ANSWER_BACKEND=copilot`, Copilot writes the answer itself from the sources the tool returns, so the
+chat model doesn't need to be loaded. The server reads `.env` only when it starts, so restart it
+(**MCP: List Servers → team-knowledge → Restart Server**) after changing the setting.
 
 ### 4. Try the commit check
 
@@ -193,3 +253,5 @@ git switch main && git branch -D try-doc-impact
 | `/doc-impact` doesn't appear | Make sure prompt files are enabled (`chat.promptFiles` setting) and you're in Agent mode. If it still doesn't show, remove the frontmatter from `.github/prompts/doc-impact.prompt.md`. |
 | Copilot answers without calling the tools | Name the tool in the request ("use search_docs…") or tick it in the tools picker. |
 | Every result is above 0.30 | The change isn't covered by the docs, so "nothing affected" is the correct answer. |
+| `ask` fails with `stopped at max_tokens` (or `/ask` returns `502`) | The model is thinking before it answers and uses up `CHAT_MAX_TOKENS`. Keep `CHAT_REASONING_EFFORT=none`, or raise `CHAT_MAX_TOKENS` if you turn thinking on. |
+| `ask` fails with an HTTP error from `/chat/completions` | The chat model isn't downloaded or loaded, or `.env` names a different one. Run `lms load qwen/qwen3.5-9b --context-length 8192`. |
